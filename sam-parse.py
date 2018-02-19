@@ -14,7 +14,7 @@ def init_seq_dict(row):
     return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': ''}
 
 def update_match_info(cigar, seq_dict, other_cigars):
-    if is_match(cigar):
+    if is_match_lax(cigar):
         seq_dict['Matches'] += 1
     else:
         seq_dict['Others'] += 1
@@ -36,6 +36,11 @@ def is_match(cigar):
     if re.search('^[0-9]+M$', cigar):
         return True
     return False
+
+def is_match_lax(cigar):
+    if re.search('H', cigar):
+        return False
+    return True
 
 csv.field_size_limit(sys.maxsize)
 
