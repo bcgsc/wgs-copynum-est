@@ -13,8 +13,8 @@ CIGAR_COL = 5
 def init_seq_dict(row):
     return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': ''}
 
-def update_match_info(cigar, seq_dict, other_cigars, i, row):
-    if is_match(cigar, i, row):
+def update_match_info(cigar, seq_dict, other_cigars):
+    if is_match(cigar):
         seq_dict['Matches'] += 1
     else:
         seq_dict['Others'] += 1
@@ -32,13 +32,9 @@ def is_mapped(flags):
         mod /= 2
     return True
 
-def is_match(cigar, i, row):
+def is_match(cigar):
     if re.search('^[0-9]+M$', cigar):
-        if i < 20:
-            print(row)
         return True
-    if i < 20:
-        print('"' + cigar + '"')
     return False
 
 csv.field_size_limit(sys.maxsize)
@@ -54,13 +50,13 @@ with open(SAMFILE, newline='') as samfile:
         seq_dict = init_seq_dict(row)
         other_cigars = []
         if seq_dict['Mapped']:
-            update_match_info(row[CIGAR_COL], seq_dict, other_cigars, 0, row)
+            update_match_info(row[CIGAR_COL], seq_dict, other_cigars)
         i = 1
         for row in reader:
             if int(row[ID_COL]) == seq_dict['ID']:
                 if is_mapped(int(row[FLAGS_COL])):
                     if seq_dict['Mapped']:
-                        update_match_info(row[CIGAR_COL], seq_dict, other_cigars, i, row)
+                        update_match_info(row[CIGAR_COL], seq_dict, other_cigars)
                     elif error_seqs[-1] != seq_dict['ID']: # if listed as unmapped and then mapped...
                         error_seqs.append(seq_dict['ID'])
             else:
@@ -70,7 +66,7 @@ with open(SAMFILE, newline='') as samfile:
                     seq_dict = init_seq_dict(row)
                     other_cigars = []
                     if seq_dict['Mapped']:
-                        update_match_info(row[CIGAR_COL], seq_dict, other_cigars, i, row)
+                        update_match_info(row[CIGAR_COL], seq_dict, other_cigars)
                 else:
                     missing_seqs.extend(range(seq_dict['ID'] + 1, int(row[0])))
             i += 1
