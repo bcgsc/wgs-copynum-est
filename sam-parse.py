@@ -8,17 +8,19 @@ ERRORFILE = sys.argv[3]
 MISSINGFILE = sys.argv[4]
 ID_COL = 0
 FLAGS_COL = 1
+MAPQ_COL = 4
 CIGAR_COL = 5
 
 def init_seq_dict(row):
-    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': ''}
+    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': '', 'Average Match MAPQ': 0 }
 
-def update_match_info(cigar, seq_dict, other_cigars):
-    if is_match_lax(cigar):
+def update_match_info(row, seq_dict, other_cigars):
+    if is_match_lax(row[CIGAR_COL]):
         seq_dict['Matches'] += 1
+        seq_dict['Average Match MAPQ'] += int(row[MAPQ_COL])
     else:
         seq_dict['Others'] += 1
-        other_cigars.append(cigar)
+        other_cigars.append(row[CIGAR_COL])
 
 def is_mapped(flags):
     if flags >= 512:
@@ -42,6 +44,12 @@ def is_match_lax(cigar):
         return False
     return True
 
+def finalise(seq_dict, other_cigars):
+    seq_dict['Other CIGARs'] = ','.join(other_cigars)
+    if seq_dict['Matches'] > 0:
+        seq_dict['Average Match MAPQ'] /= seq_dict['Matches']
+
+
 csv.field_size_limit(sys.maxsize)
 
 with open(SAMFILE, newline='') as samfile:
@@ -49,33 +57,33 @@ with open(SAMFILE, newline='') as samfile:
     error_seqs = []
     missing_seqs = []
     with open(OUTFILE, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs'])
+        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs', 'Average Match MAPQ'])
         writer.writeheader()
         row = next(reader)
         seq_dict = init_seq_dict(row)
         other_cigars = []
         if seq_dict['Mapped']:
-            update_match_info(row[CIGAR_COL], seq_dict, other_cigars)
+            update_match_info(row, seq_dict, other_cigars)
         i = 1
         for row in reader:
             if int(row[ID_COL]) == seq_dict['ID']:
                 if is_mapped(int(row[FLAGS_COL])):
                     if seq_dict['Mapped']:
-                        update_match_info(row[CIGAR_COL], seq_dict, other_cigars)
+                        update_match_info(row, seq_dict, other_cigars)
                     elif error_seqs[-1] != seq_dict['ID']: # if listed as unmapped and then mapped...
                         error_seqs.append(seq_dict['ID'])
             else:
                 if int(row[ID_COL]) == seq_dict['ID'] + 1:
-                    seq_dict['Other CIGARs'] = ','.join(other_cigars)
+                    finalise(seq_dict, other_cigars)
                     writer.writerow(seq_dict)
                     seq_dict = init_seq_dict(row)
                     other_cigars = []
                     if seq_dict['Mapped']:
-                        update_match_info(row[CIGAR_COL], seq_dict, other_cigars)
+                        update_match_info(row, seq_dict, other_cigars)
                 else:
                     missing_seqs.extend(range(seq_dict['ID'] + 1, int(row[0])))
             i += 1
-        seq_dict['Other CIGARs'] = ','.join(other_cigars)
+        finalise(seq_dict, other_cigars)
         writer.writerow(seq_dict)
     with open(ERRORFILE, 'w', newline='') as errorfile:
         writer = csv.writer(errorfile)
