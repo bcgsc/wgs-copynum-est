@@ -12,12 +12,12 @@ MAPQ_COL = 4
 CIGAR_COL = 5
 
 def init_seq_dict(row):
-    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': '', 'Average Match MAPQ': 0 }
+    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': '', 'MAPQ (unique match only)': 0 }
 
 def update_match_info(row, seq_dict, other_cigars):
     if is_match_lax(row[CIGAR_COL]):
         seq_dict['Matches'] += 1
-        seq_dict['Average Match MAPQ'] += int(row[MAPQ_COL])
+        seq_dict['MAPQ (unique match only)'] += int(row[MAPQ_COL])
     else:
         seq_dict['Others'] += 1
         other_cigars.append(row[CIGAR_COL])
@@ -46,8 +46,6 @@ def is_match_lax(cigar):
 
 def finalise(seq_dict, other_cigars):
     seq_dict['Other CIGARs'] = ','.join(other_cigars)
-    if seq_dict['Matches'] > 0:
-        seq_dict['Average Match MAPQ'] /= seq_dict['Matches']
 
 
 csv.field_size_limit(sys.maxsize)
@@ -57,7 +55,7 @@ with open(SAMFILE, newline='') as samfile:
     error_seqs = []
     missing_seqs = []
     with open(OUTFILE, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs', 'Average Match MAPQ'])
+        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs', 'MAPQ (unique match only)'])
         writer.writeheader()
         row = next(reader)
         seq_dict = init_seq_dict(row)
