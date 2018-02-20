@@ -16,9 +16,10 @@ def write_table(tfile, table):
 EST_OUTPUT = sys.argv[1]
 BWA_PARSE_OUTPUT = sys.argv[2]
 KMER = int(sys.argv[3])
+NUMSEQS = int(sys.argv[4])
 
 # REPLACE MAGIC NUMBER
-seqs = np.zeros(129026, dtype=[('ID', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('est_label', np.uint64), ('aln_match_count', np.uint64), ('aln_other_count', np.uint64)])
+seqs = np.zeros(NUMSEQS, dtype=[('ID', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('est_label', np.uint64), ('aln_match_count', np.uint64), ('aln_other_count', np.uint64)])
 table = np.zeros((6,6), dtype=np.uint)
 table_lt100 = np.zeros((6,6), dtype=np.uint)
 table_lt1000 = np.zeros((6,6), dtype=np.uint)
