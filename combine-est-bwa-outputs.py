@@ -30,9 +30,6 @@ with open(EST_OUTPUT, newline='') as estfile:
     reader = csv.reader(estfile)
     next(reader)
     for row in reader:
-        #print(row[0])
-        #print(seqs[0])
-        #print(seqs[row[0]])
         seqID = int(row[0])
         seqs[seqID]['ID'] = seqID
         seqs[seqID]['kmers'] = int(row[1])
