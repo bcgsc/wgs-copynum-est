@@ -9,6 +9,13 @@ from sklearn.neighbors import KernelDensity
 import sys
 
 
+def compute_gc_content(seq):
+    gc_count = 0
+    for b in seq:
+        if b == 'G' or b == 'C':
+            gc_count += 1
+    return (gc_count * 100 / len(seq))
+
 def get_obs_in_range(gp, feature, inf, sup):
     return gp[np.where((gp[feature] > inf) & (gp[feature] <= sup))[0]]
 
@@ -37,6 +44,7 @@ FASTA_FILE = sys.argv[1]
 KMER_LEN = int(sys.argv[2])
 seq_kmers = array.array('L')
 seq_avg_kmer_depths = array.array('d')
+seq_gc_contents = array.array('d')
 
 with open(FASTA_FILE) as fasta:
     line = fasta.readline()
@@ -46,6 +54,8 @@ with open(FASTA_FILE) as fasta:
             kmers = row[1] - KMER_LEN + 1
             seq_kmers.append(kmers)
             seq_avg_kmer_depths.append(row[2] / kmers)
+        else:
+            seq_gc_contents.append(compute_gc_content(line))
         line = fasta.readline()
 
 if len(seq_kmers) != len(seq_avg_kmer_depths):
@@ -53,11 +63,12 @@ if len(seq_kmers) != len(seq_avg_kmer_depths):
 
 numseqs = len(seq_kmers)
 #seqs = np.zeros(numseqs, dtype=[('kmers', np.uint64), ('avg_depth', np.float64), ('naive_label', np.uint64), ('likeliest_labels', np.uint64, (3,))])
-seqs = np.zeros(numseqs, dtype=[('ID', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('modex', np.float64), ('likeliest_labels', np.int, (3,))])
+seqs = np.zeros(numseqs, dtype=[('ID', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('modex', np.float64), ('gc', np.float64), ('likeliest_labels', np.int, (3,))])
 for i in range(numseqs):
     seqs[i]['ID'] = i
     seqs[i]['kmers'] = seq_kmers[i]
     seqs[i]['avg_depth'] = seq_avg_kmer_depths[i]
+    seqs[i]['gc'] = seq_gc_contents[i]
 seqs.sort(order=['kmers', 'avg_depth']) # also sorts by avg_depth, after kmer
 
 # (Basically) the next smallest possible equally sized bins
@@ -213,44 +224,13 @@ for gp in len_gps:
 
 with open('sequence_labels.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
-    header = ['ID', 'Length (in kmers)', 'Average depth', '1st Mode X', 'Likeliest label', '2nd likeliest', '3rd likeliest']
+    header = ['ID', 'Length (in kmers)', 'Average depth', '1st Mode X', 'GC %', 'Likeliest label', '2nd likeliest', '3rd likeliest']
     writer.writerow(header)
     for i in range(numseqs):
-        row = [seqs[i]['ID'], seqs[i]['kmers'], seqs[i]['avg_depth'], seqs[i]['modex']]
+        row = [seqs[i]['ID'], seqs[i]['kmers'], seqs[i]['avg_depth'], seqs[i]['modex'], seqs[i]['gc']]
         row.extend(seqs[i]['likeliest_labels'])
         writer.writerow(row)
 
-    #with open('copy_num_probs.csv', 'w', newline='') as csvfile:
-    #    writer = csv.writer(csvfile, delimiter=',')
-    #    for i in range(len(obs_label_probs)):
-    #        row = [gp[i]['avg_depth']]
-    #        row.extend(map(str, obs_label_probs[i]))
-    #        writer.writerow(row)
-    ## Just in case the number of components actually used is smaller than that initially found
-    ## But this causes error in zeros() with "TypeError: 'numpy.float64' object cannot be interpreted as an integer"???
-    ## max_label = np.amax(gp['naive_label'][:])
-    #naive_to_est_labels = np.zeros((max_components, max_components, 3), dtype=np.uint64)
-    #for i in range(len(gp)):
-    #    likeliest_labels_given = obs_label_probs[i].argsort()[-3:][::-1]
-    #    if n_components < 3: # to prevent label_mappings' barfing due to dimensional inadequacy
-    #        likeliest_labels_given = np.lib.pad(likeliest_labels_given, (0, 3 - n_components), 'constant', constant_values=(0,0))
-    #    gp[i]['likeliest_labels'] = label_mappings[likeliest_labels_given]
-    #    if n_components < 3:
-    #        for j in range(2, n_components - 1, -1):
-    #            gp[i]['likeliest_labels'][j] = -1
-    #    for j in range(3):
-    #        naive_to_est_labels[gp[i]['naive_label']][gp[i]['likeliest_labels'][j]][j] += 1
-    #gp_kmers = gp['kmers'][:]
-    #with open(str(np.amin(gp_kmers)) + 'to' + str(np.amax(gp_kmers)) + 'kmers_labels', 'w', newline='') as csvfile:
-    #    writer = csv.writer(csvfile, delimiter=',')
-    #    header = ['Labels']
-    #    header.extend(list(range(max_components)))
-    #    writer.writerow(header)
-    #    for i in range(max_components):
-    #        row = [i]
-    #        for j in range(max_components):
-    #            row.append('/'.join(map(str, naive_to_est_labels[i][j])))
-    #        writer.writerow(row)
 
 # DEBUG / SANITY CHECKS
 #
