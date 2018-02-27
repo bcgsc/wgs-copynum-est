@@ -53,7 +53,7 @@ if len(seq_kmers) != len(seq_avg_kmer_depths):
 
 numseqs = len(seq_kmers)
 #seqs = np.zeros(numseqs, dtype=[('kmers', np.uint64), ('avg_depth', np.float64), ('naive_label', np.uint64), ('likeliest_labels', np.uint64, (3,))])
-seqs = np.zeros(numseqs, dtype=[('ID', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('likeliest_labels', np.int, (3,))])
+seqs = np.zeros(numseqs, dtype=[('ID', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('modex', np.float64), ('likeliest_labels', np.int, (3,))])
 for i in range(numseqs):
     seqs[i]['ID'] = i
     seqs[i]['kmers'] = seq_kmers[i]
@@ -80,19 +80,6 @@ len_gps.reverse()
 if len(len_gps[0]) < BIN_MINSIZE:
     len_gps[1] = np.concatenate((len_gps[0], len_gps[1]))
     len_gps.pop(0)
-
-with open('seqs_debug_1.csv', 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile, delimiter=',')
-    writer.writerow(['ID', 'Length (in kmers)', 'Average depth'])
-    for i in range(numseqs):
-        writer.writerow([seqs[i]['ID'], seqs[i]['kmers'], seqs[i]['avg_depth']])
-with open('len_gps_debug_1.csv', 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile, delimiter=',')
-    writer.writerow(['ID', 'Length (in kmers)', 'Average depth'])
-    for gp in len_gps:
-        print('group length: ' + str(len(gp)))
-        for i in range(len(gp)):
-            writer.writerow([gp[i]['ID'], gp[i]['kmers'], gp[i]['avg_depth']])
 
 # estimate 1st mode from longest seqs
 len_gps_count = len(len_gps)
@@ -176,6 +163,7 @@ for gp in len_gps:
             j += 1
         #gp[i]['naive_label'] = j
         counts[j] += 1
+        gp[i]['modex'] = gp[i]['avg_depth'] / mode_depth_1
     # Compare low-count components to neighbours and adjust if appropriate
     r_obs = get_obs_in_range(gp, 'avg_depth', modes[0], modes[0] + half_component_len)
     len_obs = len(r_obs)
@@ -225,10 +213,10 @@ for gp in len_gps:
 
 with open('sequence_labels.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
-    header = ['ID', 'Length (in kmers)', 'Average depth', 'Likeliest label', '2nd likeliest', '3rd likeliest']
+    header = ['ID', 'Length (in kmers)', 'Average depth', '1st Mode X', 'Likeliest label', '2nd likeliest', '3rd likeliest']
     writer.writerow(header)
     for i in range(numseqs):
-        row = [seqs[i]['ID'], seqs[i]['kmers'], seqs[i]['avg_depth']]
+        row = [seqs[i]['ID'], seqs[i]['kmers'], seqs[i]['avg_depth'], seqs[i]['modex']]
         row.extend(seqs[i]['likeliest_labels'])
         writer.writerow(row)
 
