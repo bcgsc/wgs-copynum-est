@@ -2,7 +2,7 @@
 
 library(ggplot2)
 
-data = read.csv("celegans-1-readdata.csv")
+data = read.csv("gen-workspace/celegans-1-readdata.csv")
 length = data[,2]
 cvgs_sum = data[,3]
 k = 80
@@ -14,13 +14,13 @@ sorted_length = sort(length)
 len_quantiles = quantile(sorted_length, seq(0, 1, 0.02))
 len_quantiles_factor = factor(len_quantiles, levels=unique(len_quantiles), ordered=TRUE)
 lengths_cut = cut(length, as.numeric(levels(len_quantiles_factor)), include.lowest = TRUE)
+len_cvg['lengths_cut'] = lengths_cut
+uniq_len_ranges = sort(unique(lengths_cut))
 
 # Histograms
 # produces phantom plots at the end, but whatever
 xlab = "average k-mer depth"
-len_cvg['lengths_cut'] = lengths_cut
 pdf(file="~/temp/copy-num-est/histograms/histograms-with-densities-lengthwise.pdf")
-uniq_len_ranges = sort(unique(lengths_cut))
 graphs = vector("list", 3 * length(uniq_len_ranges))
 lapply(uniq_len_ranges, function(i) {
   curr_title = paste("sequence lengths in ", i)

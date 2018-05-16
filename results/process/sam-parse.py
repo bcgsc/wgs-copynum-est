@@ -10,9 +10,17 @@ ID_COL = 0
 FLAGS_COL = 1
 MAPQ_COL = 4
 CIGAR_COL = 5
+SEQ_COL = 9
+
+def compute_gc_content(seq):
+    gc_count = 0
+    for b in seq:
+        if b == 'G' or b == 'C':
+            gc_count += 1
+    return (gc_count / len(seq))
 
 def init_seq_dict(row):
-    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': '', 'MAPQ (unique match only)': 0 }
+    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': '', 'MAPQ (unique match only)': 0, 'GC content': compute_gc_content(row[SEQ_COL]) }
 
 def update_match_info(row, seq_dict, other_cigars):
     if is_match_lax(row[CIGAR_COL]):
@@ -55,7 +63,7 @@ with open(SAMFILE, newline='') as samfile:
     error_seqs = []
     missing_seqs = []
     with open(OUTFILE, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs', 'MAPQ (unique match only)'])
+        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs', 'MAPQ (unique match only)', 'GC content'])
         writer.writeheader()
         row = next(reader)
         seq_dict = init_seq_dict(row)
