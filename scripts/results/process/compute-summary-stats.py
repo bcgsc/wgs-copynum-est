@@ -61,7 +61,6 @@ sensitivity = [0, 0]
 
 alnmt_counts = [0, 0]
 alnmt_counts[ONE_IDX] = get_aln_total(aln_est_combos[1])
-alnmt_counts[MANY_IDX] = 0
 for i in range(2, LABELS):
     alnmt_counts[MANY_IDX] += get_aln_total(aln_est_combos[i])
 
@@ -70,18 +69,7 @@ est_counts[ONE_IDX] = get_col_total(aln_est_combos, 1, 1)
 for i in range(2, LABELS):
     est_counts[MANY_IDX] += get_col_total(aln_est_combos, 1, i)
 
-many_as_many = est_counts[MANY_IDX] - (alnmt_counts[ONE_IDX] - aln_est_combos[1][1])
-
-
-tp[ONE_IDX] = aln_est_combos[1][1] / est_counts[ONE_IDX]
-fp[ONE_IDX] = 1 - tp[ONE_IDX]
-sensitivity[ONE_IDX] = aln_est_combos[1][1] / alnmt_counts[ONE_IDX]
-fn[ONE_IDX] = 1 - sensitivity[ONE_IDX]
-
-tp[MANY_IDX] = many_as_many / est_counts[MANY_IDX]
-fp[MANY_IDX] = 1 - tp[MANY_IDX] 
-sensitivity[MANY_IDX] = many_as_many / alnmt_counts[MANY_IDX]
-fn[MANY_IDX] = 1 - sensitivity[MANY_IDX]
+positives = [aln_est_combos[1][1], est_counts[MANY_IDX] - (alnmt_counts[ONE_IDX] - aln_est_combos[1][1])]
 
 # F1 calculation
 # Let c = # of correct +ves, p = precision (TP rate), r = recall (sensitivity)
@@ -89,16 +77,20 @@ fn[MANY_IDX] = 1 - sensitivity[MANY_IDX]
 # Then p = c / p1, r = c / p0, and
 # F1 = 2 / (1/p + 1/r) = 2 / (p1/c + p0/c) = 2c / (p0 + p1)
 f1 = [0, 0]
-f1[ONE_IDX] = 2 * aln_est_combos[1][1] / (alnmt_counts[ONE_IDX] + est_counts[ONE_IDX])
-f1[MANY_IDX] = 2 * many_as_many / (alnmt_counts[MANY_IDX] + est_counts[MANY_IDX])
+f1[ONE_IDX] = 2 * positives[ONE_IDX] / (alnmt_counts[ONE_IDX] + est_counts[ONE_IDX])
+f1[MANY_IDX] = 2 * positives[MANY_IDX] / (alnmt_counts[MANY_IDX] + est_counts[MANY_IDX])
 
 with open(OUTPUT_FILE, 'w') as csvfile:
     writer = csv.writer(csvfile)
-    writer.writerow(['Class\Stat', 'TPR', 'FPR', 'Sensitivity', 'FNR', 'F1'])
-    one_stats = ['One']
-    many_stats = ['Many']
-    for array in [tp, fp, sensitivity, fn, f1]:
-        one_stats.append(array[ONE_IDX])
-        many_stats.append(array[MANY_IDX])
-    writer.writerow(one_stats)
-    writer.writerow(many_stats)
+    writer.writerow(['Class\Stat', 'TPR', 'FPR', 'Aln total', 'Sensitivity', 'FNR', 'Est. total', 'F1'])
+    rows = [['One'], ['Many']]
+    for idx in [ONE_IDX, MANY_IDX]:
+        for denominator in [est_counts, alnmt_counts]:
+            rows[idx].append(str(positives[idx] / denominator[idx]) + ' (' + str(positives[idx]) +')')
+            ngtvs = denominator[idx] - positives[idx]
+            rows[idx].append(str(ngtvs / denominator[idx]) + ' (' + str(ngtvs) + ')')
+            rows[idx].append(denominator[idx])
+        rows[idx].append(f1[idx])
+    for r in rows:
+        writer.writerow(r)
+
