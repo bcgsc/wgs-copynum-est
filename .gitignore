@@ -1,11 +1,8 @@
+archive/
 examples/
-gen-workspace/
-k80/
-naive-to-est/
-
-*.csv
 
 .RData
 .Rhistory
 
 notes.txt
+scratch.txt
