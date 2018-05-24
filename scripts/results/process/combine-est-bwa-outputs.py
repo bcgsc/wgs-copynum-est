@@ -72,8 +72,7 @@ def write_ranks_for_r(rfile, header, table, rows, cols):
 
 EST_OUTPUT = sys.argv[1]
 BWA_PARSE_OUTPUT = sys.argv[2]
-KMER = int(sys.argv[3])
-NUMSEQS = int(sys.argv[4])
+NUMSEQS = int(sys.argv[3])
 
 seqs = np.zeros(NUMSEQS, dtype=[('ID', np.uint64), ('length', np.uint64), ('avg_depth', np.float64), ('gc', np.float64), ('1st_label', np.uint64), ('2nd_label', np.uint64), ('3rd_label', np.uint64), ('aln_match_count', np.uint64), ('aln_other_count', np.uint64), ('aln_other_cigars', np.str), ('aln_mapq', np.int)])
 table = np.zeros((6,6), dtype=[('est', np.uint), ('avg_avg_depth', np.float64), ('avg_gc', np.float64)])
@@ -97,9 +96,18 @@ with open(EST_OUTPUT, newline='') as estfile:
         seqs[seqID]['length'] = int(row[1])
         seqs[seqID]['avg_depth'] = float(row[2])
         seqs[seqID]['gc'] = float(row[4])
-        seqs[seqID]['1st_label'] = int(row[5]) + 1
-        seqs[seqID]['2nd_label'] = int(row[6]) + 1
-        seqs[seqID]['3rd_label'] = int(row[7]) + 1
+        if int(row[5]) >= 0:
+            seqs[seqID]['1st_label'] = int(row[5]) + 1
+        else:
+            seqs[seqID]['1st_label'] = sys.maxsize
+        if int(row[6]) >= 0:
+            seqs[seqID]['2nd_label'] = int(row[6]) + 1
+        else:
+            seqs[seqID]['2nd_label'] = sys.maxsize
+        if int(row[7]) >= 0:
+            seqs[seqID]['3rd_label'] = int(row[7]) + 1
+        else:
+            seqs[seqID]['3rd_label'] = sys.maxsize
 
 with open(BWA_PARSE_OUTPUT, newline='') as alnfile:
     reader = csv.reader(alnfile, delimiter='\t')
@@ -111,6 +119,7 @@ with open(BWA_PARSE_OUTPUT, newline='') as alnfile:
         seqs[seqID]['aln_other_cigars'] = row[4]
         seqs[seqID]['aln_mapq'] = int(row[5])
 
+seqs.sort(order=['length', 'avg_depth'])
 with open('seq-est-and-aln.csv', 'w', newline='') as seqfile:
     writer = csv.writer(seqfile)
     writer.writerow(['ID', 'Length', 'Average depth', 'GC %', 'Est. 1st label', 'Est. 2nd label', 'Est. 3rd label', 'Ref. alns', 'Ref. other alns', 'Other alns'' CIGARs', 'MAPQ (unique aln only)'])
@@ -160,53 +169,20 @@ for i in range(6):
 counts_header_for_r = ['aln', 'est', 'count', 'avg_avg_depth', 'avg_gc']
 ranks_header_for_r = ['aln', 'est_rank', 'count']
 
-with open('aln-est-counts.csv', 'w') as tfile:
-    write_table(tfile, table)
-with open('aln-est-counts-r.csv', 'w') as tfile:
-    write_for_r(tfile, counts_header_for_r, table, 6, 6)
-    
-with open('aln-est-counts-lt100.csv', 'w') as tfile:
-    write_table(tfile, table_lt100)
-with open('aln-est-counts-lt100-r.csv', 'w') as tfile:
-    write_for_r(tfile, counts_header_for_r, table_lt100, 6, 6)
+count_files = ['aln-est-counts.csv', 'aln-est-counts-lt100.csv', 'aln-est-counts-lt1000.csv', 'aln-est-counts-lt10000.csv', 'aln-est-counts-10000plus.csv']
+count_files_r = ['aln-est-counts-r.csv', 'aln-est-counts-lt100-r.csv', 'aln-est-counts-lt1000-r.csv', 'aln-est-counts-lt10000-r.csv', 'aln-est-counts-10000plus-r.csv']
+rank_files = ['aln-est-ranks.csv', 'aln-est-ranks-lt100.csv', 'aln-est-ranks-lt1000.csv', 'aln-est-ranks-lt10000.csv', 'aln-est-ranks-10000plus.csv']
+rank_files_r = ['aln-est-ranks-r.csv', 'aln-est-ranks-lt100-r.csv', 'aln-est-ranks-lt1000-r.csv', 'aln-est-ranks-lt10000-r.csv', 'aln-est-ranks-10000plus-r.csv']
+tables = [table, table_lt100, table_lt1000, table_lt10000, table_10000plus]
+rank_count_arrays = [rank_counts, rank_counts_lt100, rank_counts_lt1000, rank_counts_lt10000, rank_counts]
+brackets = len(tables)
 
-with open('aln-est-counts-lt1000.csv', 'w') as tfile:
-    write_table(tfile, table_lt1000)
-with open('aln-est-counts-lt1000-r.csv', 'w') as tfile:
-    write_for_r(tfile, counts_header_for_r, table_lt1000, 6, 6)
-
-with open('aln-est-counts-lt10000.csv', 'w') as tfile:
-    write_table(tfile, table_lt10000)
-with open('aln-est-counts-lt10000-r.csv', 'w') as tfile:
-    write_for_r(tfile, counts_header_for_r, table_lt10000, 6, 6)
-
-with open('aln-est-counts-10000plus.csv', 'w') as tfile:
-    write_table(tfile, table_10000plus)
-with open('aln-est-counts-10000plus-r.csv', 'w') as tfile:
-    write_for_r(tfile, counts_header_for_r, table_10000plus, 6, 6)
-
-with open('aln-est-ranks.csv', 'w') as rfile:
-    write_ranks(rfile, rank_counts)
-with open('aln-est-ranks-r.csv', 'w') as rfile:
-    write_ranks_for_r(rfile, ranks_header_for_r, rank_counts, 6, 4)
-    
-with open('aln-est-ranks-lt100.csv', 'w') as rfile:
-    write_ranks(rfile, rank_counts_lt100)
-with open('aln-est-ranks-lt100-r.csv', 'w') as rfile:
-    write_ranks_for_r(rfile, ranks_header_for_r, rank_counts_lt100, 6, 4)
-    
-with open('aln-est-ranks-lt1000.csv', 'w') as rfile:
-    write_ranks(rfile, rank_counts_lt1000)
-with open('aln-est-ranks-lt1000-r.csv', 'w') as rfile:
-    write_ranks_for_r(rfile, ranks_header_for_r, rank_counts_lt1000, 6, 4)
-    
-with open('aln-est-ranks-lt10000.csv', 'w') as rfile:
-    write_ranks(rfile, rank_counts_lt10000)
-with open('aln-est-ranks-lt10000-r.csv', 'w') as rfile:
-    write_ranks_for_r(rfile, ranks_header_for_r, rank_counts_lt10000, 6, 4)
-    
-with open('aln-est-ranks-10000plus.csv', 'w') as rfile:
-    write_ranks(rfile, rank_counts_10000plus)
-with open('aln-est-ranks-10000plus-r.csv', 'w') as rfile:
-    write_ranks_for_r(rfile, ranks_header_for_r, rank_counts_10000plus, 6, 4)
-    
+for i in range(brackets):
+    with open(count_files[i], 'w') as tfile:
+        write_table(tfile, tables[i])
+    with open(count_files_r[i], 'w') as tfile:
+        write_for_r(tfile, counts_header_for_r, tables[i], 6, 6)
+    with open(rank_files[i], 'w') as rfile:
+        write_ranks(rfile, rank_count_arrays[i])
+    with open(rank_files_r[i], 'w') as rfile:
+        write_ranks_for_r(rfile, ranks_header_for_r, rank_count_arrays[i], 6, 4)

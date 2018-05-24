@@ -2,7 +2,7 @@
 
 library(ggplot2)
 
-data = read.csv("gen-workspace/celegans-1-readdata.csv")
+data = read.csv("celegans-1-readdata.csv")
 length = data[,2]
 cvgs_sum = data[,3]
 k = 80

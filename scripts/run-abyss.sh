@@ -1,4 +1,5 @@
-#!/home/benv/bin/zsh
+#!/bin/bash
+
 set -eu -o pipefail
 
 # for OpenMPI
@@ -17,7 +18,8 @@ read1=/projects/btl/datasets/celegans/N2strain/DRR008444_1.fastq
 read2=/projects/btl/datasets/celegans/N2strain/DRR008444_2.fastq
 
 # k-mer size
-k=80
+k=$1
+shift
 
 # create and switch to assembly dir
 dir=k$k
