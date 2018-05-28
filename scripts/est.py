@@ -132,13 +132,6 @@ mode1_depth = mode_sum / mode_est_gps_count
 #mode1_depth = 19
 #mode1_depth = 54.3 # k = 25
 
-# attempt to excise "error distribution":
-hist_sup = m.ceil(mode1_depth) + 1
-if m.ceil(mode1_depth) > mode1_depth:
-    hist_sup += 1 
-hist = np.histogram(len_gps[0]['avg_depth'], bins=np.arange(m.floor(len_gps[0]['avg_depth'][0]), hist_sup))
-shortest_min_depth_for_est = hist[1][np.argmin(hist[0])]
-
 depth_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
 pctl_in_modes = depth_80th_pctl / mode1_depth
 closest_mode = m.floor(pctl_in_modes)
@@ -152,11 +145,9 @@ with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
     f.write('mode: ' + str(mode1_depth) + '\n')
     f.write('80th percentile: ' + str(depth_80th_pctl) + '\n')
     f.write('max. depth for inclusion in estimation: ' + str(max_depth_for_est) + '\n')
-    f.write('min. depth for shortest seqs for inclusion in estimation: ' + str(shortest_min_depth_for_est) + '\n')
 
 len_gps_oom = [] # orders of magnitude
-len_gps_oom.append(seqs_for_est[np.where((seqs_for_est['len'] < 100) & (seqs_for_est['avg_depth'] >= shortest_min_depth_for_est))[0]])
-#len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] < 100)[0]])
+len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] < 100)[0]])
 len_gps_oom.append(seqs_for_est[np.where((seqs_for_est['len'] > 99) & (seqs_for_est['len'] < 1000))[0]])
 len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] > 999)[0]])
 
