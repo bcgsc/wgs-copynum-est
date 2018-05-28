@@ -41,6 +41,7 @@ def push_mean_and_label(means_init, mean, label_mappings, idx):
 
 FASTA_FILE = sys.argv[1]
 KMER_LEN = int(sys.argv[2])
+OUTPUT_DIR = sys.argv[3]
 seq_lens = array.array('L')
 seq_kmers = array.array('L')
 seq_avg_kmer_depths = array.array('d')
@@ -101,8 +102,7 @@ mode_est_gps_count = m.ceil(len_gps_count/20)
 b4_mode_est_gp = len_gps_count - mode_est_gps_count - 1
 
 # estimate mode from each selected group (of the longest sequences)
-#bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}, cv=20) # bandwidth selection
-bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}) # bandwidth selection
+bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}, cv=20) # bandwidth selection; default cross-validation (o/w specify e.g. cv=20)
 mode_sum = 0
 for gp in len_gps[-1:b4_mode_est_gp:-1]:
     curr_gp = np.copy(gp['avg_depth'][:,None])
@@ -111,48 +111,52 @@ for gp in len_gps[-1:b4_mode_est_gp:-1]:
 
     bw_est_grid.fit(curr_gp) # estimate best bandwidth for KDE
     kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(curr_gp)
-    kde = KernelDensity(kernel='gaussian').fit(curr_gp)
     density_pts = np.linspace(0, max_depth, (max_depth+1) * 10 + 1)[:, None]
     log_dens = kde.score_samples(density_pts)
     first_mode = np.argmax(log_dens) / 10
 
-    #cutoff = np.argmax(log_dens) * 2
-    #if cutoff < 0.8 * max_depth:
-    #    truncated_depths = curr_gp[np.where(curr_gp < cutoff)[0]]
-    #    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.3, 26)}, cv=20) # bandwidth selection
-    #    bw_est_grid.fit(truncated_depths)
-    #    kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(truncated_depths)
-    #    max_depth = truncated_depths[-1][0]
-    #    density_pts = np.linspace(0, max_depth, (max_depth+1) * 10 + 1)[:, None]
-    #    log_dens = kde.fit(truncated_depths).score_samples(density_pts)
-    #    first_mode = np.argmax(log_dens) / 10
+    cutoff = np.argmax(log_dens) * 2
+    if cutoff < 0.8 * max_depth:
+        truncated_depths = curr_gp[np.where(curr_gp < cutoff)[0]]
+        bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.3, 26)}, cv=20) # bandwidth selection
+        bw_est_grid.fit(truncated_depths)
+        kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(truncated_depths)
+        max_depth = truncated_depths[-1][0]
+        density_pts = np.linspace(0, max_depth, (max_depth+1) * 10 + 1)[:, None]
+        log_dens = kde.fit(truncated_depths).score_samples(density_pts)
+        first_mode = np.argmax(log_dens) / 10
     mode_sum += first_mode
-
-#has_error_slope = True
-#while has_error_slope: # get point of min density betw 0 and np.argmax(log_dens)
 
 # mixture modeling
 mode1_depth = mode_sum / mode_est_gps_count
 #mode1_depth = 19
 #mode1_depth = 54.3 # k = 25
-half_component_len = mode1_depth / 2
+
+# attempt to excise "error distribution":
+hist_sup = m.ceil(mode1_depth) + 1
+if m.ceil(mode1_depth) > mode1_depth:
+    hist_sup += 1 
+hist = np.histogram(len_gps[0]['avg_depth'], bins=np.arange(m.floor(len_gps[0]['avg_depth'][0]), hist_sup))
+shortest_min_depth_for_est = hist[1][np.argmin(hist[0])]
 
 depth_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
-last_mode = m.floor(depth_80th_pctl / mode1_depth)
-next_mode = m.ceil(depth_80th_pctl / mode1_depth)
-#closest_mode = 
-#max_depth_for_est = ( + 0.5) * mode1_depth
-#print(depth_80th_pctl)
-#print('depth cutoff: ' + str(max_depth_for_est))
-seqs_for_est = seqs[np.where(seqs['avg_depth'] <= depth_80th_pctl)[0]]
+pctl_in_modes = depth_80th_pctl / mode1_depth
+closest_mode = m.floor(pctl_in_modes)
+if pctl_in_modes - closest_mode > 0.5:
+    closest_mode += mode1_depth
+max_depth_for_est = (closest_mode + 0.5) * mode1_depth
+seqs_for_est = seqs[np.where(seqs['avg_depth'] <= max_depth_for_est)[0]]
 
-with open('log-k' + str(KMER_LEN) + '.txt', 'w', newline='') as f:
+with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
     f.write('median unitig avg k-mer depth: ' + str(np.median(seqs['avg_depth'])) + '\n')
     f.write('mode: ' + str(mode1_depth) + '\n')
     f.write('80th percentile: ' + str(depth_80th_pctl) + '\n')
+    f.write('max. depth for inclusion in estimation: ' + str(max_depth_for_est) + '\n')
+    f.write('min. depth for shortest seqs for inclusion in estimation: ' + str(shortest_min_depth_for_est) + '\n')
 
 len_gps_oom = [] # orders of magnitude
-len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] < 100)[0]])
+len_gps_oom.append(seqs_for_est[np.where((seqs_for_est['len'] < 100) & (seqs_for_est['avg_depth'] >= shortest_min_depth_for_est))[0]])
+#len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] < 100)[0]])
 len_gps_oom.append(seqs_for_est[np.where((seqs_for_est['len'] > 99) & (seqs_for_est['len'] < 1000))[0]])
 len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] > 999)[0]])
 
@@ -188,7 +192,7 @@ for gp in len_gps_oom:
             j += 1
         counts[j] += 1
     for i in range(max_components): 
-        if counts[i] < 2:
+        if counts[i] < 5:
             break
         push_mean_and_label(means_init_py, modes[i], label_mappings_py, i)
 
@@ -215,7 +219,7 @@ for gp in len_gps_oom:
             for j in range(2, n_components - 1, -1):
                 seqs[gp[i]['ID']]['likeliest_labels'][j] = -1
 
-with open('params-k' + str(KMER_LEN) + '.csv', 'w', newline='') as csvfile:
+with open(OUTPUT_DIR + '/params.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
     header = ['Group max. len.', 'Component #', 'Weight', 'Mean', 'Init. mean', 'Covariance']
     writer.writerow(header)
@@ -224,7 +228,7 @@ with open('params-k' + str(KMER_LEN) + '.csv', 'w', newline='') as csvfile:
             writer.writerow([gmm_gp_maxlen[gpidx], gmm_gp_label_mappings[gpidx][i], gmm_wts[gpidx][i], gmm_means[gpidx][i][0], gmm_gp_modes[gpidx][gmm_gp_label_mappings[gpidx][i]], gmm_vars[gpidx][i]])
 
 seqs.sort(order=['len', 'avg_depth'])
-with open('sequence-labels-oom-k' + str(KMER_LEN) + '.csv', 'w', newline='') as csvfile:
+with open(OUTPUT_DIR + '/sequence-labels-oom.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
     header = ['ID', 'Length', 'Average depth', '1st Mode X', 'GC %', 'Likeliest label', '2nd likeliest', '3rd likeliest']
     writer.writerow(header)
@@ -251,6 +255,22 @@ with open('sequence-labels-oom-k' + str(KMER_LEN) + '.csv', 'w', newline='') as 
 # SCRAPS
 #len_gps = np.asarray(len_gps_tmp)
 
+# attempt to excise "error dist." by KDE:
+#shortest_lte_mode1 = np.copy(len_gps[0]['avg_depth'][:,None])
+#shortest_lte_mode1.sort(axis=0)
+#bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.025, 1, 40)}) # bandwidth selection
+#bw_est_grid.fit(shortest_lte_mode1)
+#kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(shortest_lte_mode1)
+#min_depth = shortest_lte_mode1[0][0]
+#log_dens = kde.fit(shortest_lte_mode1).score_samples(np.linspace(min_depth, mode1_depth, (mode1_depth - min_depth) * 100 + 1)[:, None])
+#print(log_dens)
+#print('min density < first mode: ' + str(np.argmin(log_dens) / 100))
+
+# to determine cutoff depth for inclusion in estimation
+#cutoff_region = seqs[np.where((seqs['avg_depth'] >= last_mode) & (seqs['avg_depth'] <= next_mode))[0]]['avg_depth'][:,None]
+#bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.025, 1, 40)}) # bandwidth selection
+#bw_est_grid.fit(cutoff_region)
+#kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(cutoff_region)
 
 # Compare low-count components to neighbours and adjust if appropriate
 #r_obs = get_obs_in_range(gp, 'avg_depth', modes[0], modes[0] + half_component_len)
