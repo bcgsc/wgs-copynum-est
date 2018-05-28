@@ -82,7 +82,7 @@ f1[MANY_IDX] = 2 * positives[MANY_IDX] / (alnmt_counts[MANY_IDX] + est_counts[MA
 
 with open(OUTPUT_FILE, 'w') as csvfile:
     writer = csv.writer(csvfile)
-    writer.writerow(['Class\Stat', 'TPR', 'FPR', 'Aln total', 'Sensitivity', 'FNR', 'Est. total', 'F1'])
+    writer.writerow(['Class\Stat', 'TPR', 'FPR', 'Est. total', 'Sensitivity', 'FNR', 'Aln. total', 'F1'])
     rows = [['One'], ['Many']]
     for idx in [ONE_IDX, MANY_IDX]:
         for denominator in [est_counts, alnmt_counts]:
