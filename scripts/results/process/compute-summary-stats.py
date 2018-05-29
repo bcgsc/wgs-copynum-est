@@ -24,6 +24,7 @@ ALN_EST_COUNTS = sys.argv[1]
 # for each # of reference alignments, counts of sequences with 1 copy # as the likeliest, or 2nd, 3rd, or 4th+ (other) likeliest estimate
 ALN_EST_RANKS = sys.argv[2]
 OUTPUT_FILE = sys.argv[3]
+NB_OUTPUT_FILE = sys.argv[4] # non-binary: per-group stats
 
 LABELS = 6
 alnmt_totals = []
@@ -60,14 +61,20 @@ fn = [0, 0]
 sensitivity = [0, 0]
 
 alnmt_counts = [0, 0]
-alnmt_counts[ONE_IDX] = get_aln_total(aln_est_combos[1])
+alnmt_counts_nb = [0] * LABELS
+alnmt_counts_nb[1] = get_aln_total(aln_est_combos[1])
+alnmt_counts[ONE_IDX] = alnmt_counts_nb[1]
 for i in range(2, LABELS):
-    alnmt_counts[MANY_IDX] += get_aln_total(aln_est_combos[i])
+    alnmt_counts_nb[i] = get_aln_total(aln_est_combos[i])
+    alnmt_counts[MANY_IDX] += alnmt_counts_nb[i]
 
 est_counts = [0, 0]
-est_counts[ONE_IDX] = get_col_total(aln_est_combos, 1, 1)
+est_counts_nb = [0] * LABELS
+est_counts_nb[1] = get_col_total(aln_est_combos, 1, 1)
+est_counts[ONE_IDX] = est_counts_nb[1]
 for i in range(2, LABELS):
-    est_counts[MANY_IDX] += get_col_total(aln_est_combos, 1, i)
+    est_counts_nb[i] = get_col_total(aln_est_combos, 1, i)
+    est_counts[MANY_IDX] += est_counts_nb[i]
 
 positives = [aln_est_combos[1][1], est_counts[MANY_IDX] - (alnmt_counts[ONE_IDX] - aln_est_combos[1][1])]
 
@@ -77,8 +84,12 @@ positives = [aln_est_combos[1][1], est_counts[MANY_IDX] - (alnmt_counts[ONE_IDX]
 # Then p = c / p1, r = c / p0, and
 # F1 = 2 / (1/p + 1/r) = 2 / (p1/c + p0/c) = 2c / (p0 + p1)
 f1 = [0, 0]
-f1[ONE_IDX] = 2 * positives[ONE_IDX] / (alnmt_counts[ONE_IDX] + est_counts[ONE_IDX])
+f1_nb = [0] * LABELS
 f1[MANY_IDX] = 2 * positives[MANY_IDX] / (alnmt_counts[MANY_IDX] + est_counts[MANY_IDX])
+for i in range(1, LABELS):
+    if alnmt_counts_nb[i] + est_counts_nb[i] > 0:
+        f1_nb[i] = 2 * aln_est_combos[i][i] / (alnmt_counts_nb[i] + est_counts_nb[i])
+f1[ONE_IDX] = f1_nb[1]
 
 with open(OUTPUT_FILE, 'w') as csvfile:
     writer = csv.writer(csvfile)
@@ -91,6 +102,29 @@ with open(OUTPUT_FILE, 'w') as csvfile:
             rows[idx].append(str(ngtvs / denominator[idx]) + ' (' + str(ngtvs) + ')')
             rows[idx].append(denominator[idx])
         rows[idx].append(f1[idx])
+    for r in rows:
+        writer.writerow(r)
+
+with open(NB_OUTPUT_FILE, 'w') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(['Class\Stat', 'TPR', 'FPR', 'Est. total', 'Sensitivity', 'FNR', 'Aln. total', 'F1'])
+    rows = [['1'], ['2'], ['3'], ['4'], ['5+']]
+    for i in range(1, LABELS):
+        row = rows[i-1]
+        for denominator in [est_counts_nb, alnmt_counts_nb]:
+            if denominator[i] > 0:
+                row.append(str(aln_est_combos[i][i] / denominator[i]) + ' (' + str(aln_est_combos[i][i]) +')')
+                ngtvs = denominator[i] - aln_est_combos[i][i]
+                row.append(str(ngtvs / denominator[i]) + ' (' + str(ngtvs) + ')')
+            else:
+                row.extend(['', ''])
+            row.append(denominator[i])
+        if f1_nb[i] > 0:
+            row.append(f1_nb[i])
+        else:
+            row.append('')
+        if est_counts_nb[i] == 0:
+            print(row)
     for r in rows:
         writer.writerow(r)
 
