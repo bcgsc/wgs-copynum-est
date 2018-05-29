@@ -115,16 +115,16 @@ for gp in len_gps[-1:b4_mode_est_gp:-1]:
     log_dens = kde.score_samples(density_pts)
     first_mode = np.argmax(log_dens) / 10
 
-    cutoff = np.argmax(log_dens) * 2
-    if cutoff < 0.8 * max_depth:
-        truncated_depths = curr_gp[np.where(curr_gp < cutoff)[0]]
+    dispersion = np.var(curr_gp) / np.mean(curr_gp)
+    if dispersion >= 5:
+        truncated_depths = curr_gp[np.where(curr_gp < min(first_mode * 10, np.percentile(curr_gp, 99.8)))[0]]
         bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.3, 26)}, cv=20) # bandwidth selection
         bw_est_grid.fit(truncated_depths)
         kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(truncated_depths)
         max_depth = truncated_depths[-1][0]
         density_pts = np.linspace(0, max_depth, (max_depth+1) * 10 + 1)[:, None]
-        log_dens = kde.fit(truncated_depths).score_samples(density_pts)
-        first_mode = np.argmax(log_dens) / 10
+        log_dens = kde.score_samples(density_pts)
+        first_mode = (np.argmax(log_dens) - 1) / 10
     mode_sum += first_mode
 
 # mixture modeling
