@@ -102,7 +102,7 @@ mode_est_gps_count = m.ceil(len_gps_count/20)
 b4_mode_est_gp = len_gps_count - mode_est_gps_count - 1
 
 # estimate mode from each selected group (of the longest sequences)
-bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}, cv=20) # bandwidth selection; default cross-validation (o/w specify e.g. cv=20)
+bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}, cv=10) # bandwidth selection; default cross-validation (o/w specify e.g. cv=20)
 mode_sum = 0
 for gp in len_gps[-1:b4_mode_est_gp:-1]:
     curr_gp = np.copy(gp['avg_depth'][:,None])
