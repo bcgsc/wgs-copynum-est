@@ -132,24 +132,49 @@ mode1_depth = mode_sum / mode_est_gps_count
 #mode1_depth = 19
 #mode1_depth = 54.3 # k = 25
 
+#overall_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
 depth_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
-pctl_in_modes = depth_80th_pctl / mode1_depth
-closest_mode = m.floor(pctl_in_modes)
-if pctl_in_modes - closest_mode > 0.5:
-    closest_mode += mode1_depth
-max_depth_for_est = (closest_mode + 0.5) * mode1_depth
-seqs_for_est = seqs[np.where(seqs['avg_depth'] <= max_depth_for_est)[0]]
+#pctl_in_modes = depth_80th_pctl / mode1_depth
+#closest_mode = m.floor(pctl_in_modes)
+#if pctl_in_modes - closest_mode > 0.5:
+#    closest_mode += mode1_depth
+#max_depth_for_est = (closest_mode + 0.5) * mode1_depth
+#seqs_for_est = seqs[np.where(seqs['avg_depth'] <= max_depth_for_est)[0]]
+
+len_gps_oom = [] # orders of magnitude
+#len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] < 100)[0]])
+#len_gps_oom.append(seqs_for_est[np.where((seqs_for_est['len'] > 99) & (seqs_for_est['len'] < 1000))[0]])
+#len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] > 999)[0]])
+depth_95th_pctl = np.percentile(seqs['avg_depth'], 95, interpolation='higher')
+#overall_95th_pctl = np.percentile(seqs['avg_depth'], 95, interpolation='higher')
+#pctls = []
+cutoffs = []
+for gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] > 99) & (seqs['len'] < 1000))[0]], seqs[np.where(seqs['len'] > 999)[0]]]:
+    #gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
+    #gp_95th_pctl = np.percentile(gp['avg_depth'], 95, interpolation='higher')
+    # in case relative magnitudes are flipped for 80th and 95th percentiles
+    #if overall_80th_pctl < gp_80th_pctl:
+    #    [depth_80th_pctl, depth_95th_pctl] = [gp_80th_pctl, gp_95th_pctl]
+    #else:
+    #    [depth_80th_pctl, depth_95th_pctl] = [overall_80th_pctl, overall_95th_pctl]
+    #pctls.append(str(depth_80th_pctl))
+    obs_for_kde = gp[np.where(gp['avg_depth'] <= depth_95th_pctl)[0]]['avg_depth'][:, None]
+    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=10)
+    bw_est_grid.fit(obs_for_kde)
+    kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(obs_for_kde)
+    density_pts = np.linspace(0, depth_95th_pctl, depth_95th_pctl * 20 + 1)[:, None]
+    log_dens = kde.score_samples(density_pts)
+    start = m.ceil(m.floor(depth_80th_pctl / mode1_depth) * mode1_depth * 20) + 1
+    depth_cutoff = (start + np.argmin(log_dens[start:m.ceil(m.ceil(depth_80th_pctl / mode1_depth) * mode1_depth * 20 + 2)]) - 1) / 20
+    cutoffs.append(str(depth_cutoff))
+    len_gps_oom.append(gp[np.where(gp['avg_depth'] <= depth_cutoff)[0]])
 
 with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
     f.write('median unitig avg k-mer depth: ' + str(np.median(seqs['avg_depth'])) + '\n')
     f.write('mode: ' + str(mode1_depth) + '\n')
+    #f.write('80th percentiles (for length groups (0, 100) / [100, 1000) / [1000, 10000) / [10000, inf)): ' + ' / '.join(pctls) + '\n')
     f.write('80th percentile: ' + str(depth_80th_pctl) + '\n')
-    f.write('max. depth for inclusion in estimation: ' + str(max_depth_for_est) + '\n')
-
-len_gps_oom = [] # orders of magnitude
-len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] < 100)[0]])
-len_gps_oom.append(seqs_for_est[np.where((seqs_for_est['len'] > 99) & (seqs_for_est['len'] < 1000))[0]])
-len_gps_oom.append(seqs_for_est[np.where(seqs_for_est['len'] > 999)[0]])
+    f.write('max. depths for inclusion in estimation: ' + ' / '.join(cutoffs) + '\n')
 
 seqs.sort(order='ID')
 # Vanilla instead of Bayesian GMM used because the latter could need manual tuning (e.g. of weight_concentration_prior)
