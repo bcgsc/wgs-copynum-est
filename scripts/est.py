@@ -72,7 +72,7 @@ for i in range(numseqs):
     seqs[i]['avg_depth'] = seq_avg_kmer_depths[i]
     seqs[i]['gc'] = seq_gc_contents[i]
     for j in range(3):
-        seqs[i]['likeliest_labels'][j] = -1
+        seqs[i]['likeliest_labels'][j] = sys.maxsize
 seqs.sort(order=['kmers', 'avg_depth']) # also sorts by avg_depth, after kmer
 
 # (Basically) the next smallest possible equally sized bins
