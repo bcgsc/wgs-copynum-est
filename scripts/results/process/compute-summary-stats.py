@@ -123,8 +123,6 @@ with open(NB_OUTPUT_FILE, 'w') as csvfile:
             row.append(f1_nb[i])
         else:
             row.append('')
-        if est_counts_nb[i] == 0:
-            print(row)
     for r in rows:
         writer.writerow(r)
 
