@@ -161,7 +161,7 @@ for seq_gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] 
         n_components = min(n_components, m.floor(overall_80th_pctl / mode1_depth))
         max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
     obs_for_kde = gp[np.where(gp['avg_depth'] <= max_for_kde)[0]]['avg_depth'][:, None]
-    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=10)
+    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=5)
     bw_est_grid.fit(obs_for_kde)
     kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(obs_for_kde)
     density_pts = np.linspace(0, max_for_kde, max_for_kde * 20 + 1)[:, None]
