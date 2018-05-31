@@ -140,26 +140,26 @@ for seq_gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] 
     gp.sort(order='avg_depth')
     gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
     gp_90th_pctl = np.percentile(gp['avg_depth'], 90, interpolation='higher')
-    if overall_80th_pctl < gp_80th_pctl:
-        [n_components, max_for_kde] = [m.floor(gp_80th_pctl / mode1_depth), max(gp_80th_pctl + 2 * mode1_depth, gp_90th_pctl)]
-    else:
-        n_components = 1
-        count = 0
-        sup = 1.5 * mode1_depth
-        for i in range(len(gp)):
+    n_components = 1
+    count = 0
+    sup = 1.5 * mode1_depth
+    for i in range(len(gp)):
+        if gp[i]['avg_depth'] > sup:
+            if count < 20:
+                break
+            sup += mode1_depth
             if gp[i]['avg_depth'] > sup:
-                if count < 20:
-                    break
-                sup += mode1_depth
-                if gp[i]['avg_depth'] > sup:
-                    break
-                n_components += 1
-                count = 0
-            count += 1
-        if count < 20:
-            n_components -= 1
+                break
+            n_components += 1
+            count = 0
+        count += 1
+    if count < 20:
+        n_components -= 1
+    if overall_80th_pctl < gp_80th_pctl:
+        n_components = min(n_components, m.floor(gp_80th_pctl / mode1_depth))
+    else:
         n_components = min(n_components, m.floor(overall_80th_pctl / mode1_depth))
-        max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
+    max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
     obs_for_kde = gp[np.where(gp['avg_depth'] <= max_for_kde)[0]]['avg_depth'][:, None]
     bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=5)
     bw_est_grid.fit(obs_for_kde)
