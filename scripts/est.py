@@ -35,10 +35,6 @@ def adjust_wrt_nbr(gp, modes, idx, nidx, half, obs, feature):
             counts[idx] -= 1
             counts[nidx] += 1
 
-def push_mean_and_label(means_init, mean, label_mappings, idx):
-    means_init.append(mean)
-    label_mappings.append(idx)
-
 FASTA_FILE = sys.argv[1]
 KMER_LEN = int(sys.argv[2])
 OUTPUT_DIR = sys.argv[3]
@@ -133,102 +129,77 @@ mode1_depth = mode_sum / mode_est_gps_count
 #mode1_depth = 54.3 # k = 25
 
 overall_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
-overall_95th_pctl = np.percentile(seqs['avg_depth'], 95, interpolation='higher')
-pctls = []
+overall_90th_pctl = np.percentile(seqs['avg_depth'], 90, interpolation='higher')
 cutoffs = []
-len_gps_oom = [] # orders of magnitude
-for gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] > 99) & (seqs['len'] < 1000))[0]], seqs[np.where(seqs['len'] > 999)[0]]]:
-    gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
-    gp_95th_pctl = np.percentile(gp['avg_depth'], 95, interpolation='higher')
-    # in case relative magnitudes are flipped for 80th and 95th percentiles
-    if overall_80th_pctl < gp_80th_pctl:
-        [depth_80th_pctl, depth_95th_pctl] = [gp_80th_pctl, gp_95th_pctl]
-    else:
-        [depth_80th_pctl, depth_95th_pctl] = [overall_80th_pctl, overall_95th_pctl]
-    pctls.append(str(depth_80th_pctl))
-    obs_for_kde = gp[np.where(gp['avg_depth'] <= depth_95th_pctl)[0]]['avg_depth'][:, None]
-    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=10)
-    bw_est_grid.fit(obs_for_kde)
-    kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(obs_for_kde)
-    density_pts = np.linspace(0, depth_95th_pctl, depth_95th_pctl * 20 + 1)[:, None]
-    log_dens = kde.score_samples(density_pts)
-    start = m.ceil(m.floor(depth_80th_pctl / mode1_depth) * mode1_depth * 20) + 1
-    depth_cutoff = (start + np.argmin(log_dens[start:m.ceil(m.ceil(depth_80th_pctl / mode1_depth) * mode1_depth * 20 + 2)]) - 1) / 20
-    cutoffs.append(str(depth_cutoff))
-    len_gps_oom.append(gp[np.where(gp['avg_depth'] <= depth_cutoff)[0]])
-
-with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
-    f.write('median unitig avg k-mer depth: ' + str(np.median(seqs['avg_depth'])) + '\n')
-    f.write('mode: ' + str(mode1_depth) + '\n')
-    f.write('80th percentiles (for length groups (0, 100) / [100, 1000) / [1000, 10000) / [10000, inf)): ' + ' / '.join(pctls) + '\n')
-    f.write('max. depths for inclusion in estimation: ' + ' / '.join(cutoffs) + '\n')
-
-seqs.sort(order='ID')
-# Vanilla instead of Bayesian GMM used because the latter could need manual tuning (e.g. of weight_concentration_prior)
-gmm_gp_maxlen = [99, 999, np.inf]
-gmm_gp_label_mappings = []
-gmm_gp_modes = []
 gmm_wts = []
 gmm_means = []
 gmm_vars = []
-for gp in len_gps_oom:
+seqs.sort(order='ID')
+for seq_gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] > 99) & (seqs['len'] < 1000))[0]], seqs[np.where(seqs['len'] > 999)[0]]]:
+    gp = np.copy(seq_gp)
     gp.sort(order='avg_depth')
-    max_components = gp[-1]['avg_depth'] / mode1_depth
-    if max_components - m.floor(max_components) > 0.5:
-        max_components = m.ceil(max_components)
+    gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
+    gp_90th_pctl = np.percentile(gp['avg_depth'], 90, interpolation='higher')
+    if overall_80th_pctl < gp_80th_pctl:
+        [n_components, max_for_kde] = [m.floor(gp_80th_pctl / mode1_depth), max(gp_80th_pctl + 2 * mode1_depth, gp_90th_pctl)]
     else:
-        max_components = m.floor(max_components)
-    modes = np.zeros(max_components, dtype=np.float64)
-    counts = np.zeros(max_components, dtype=np.uint64)
-    means_init_py = []
-    label_mappings_py = []
-    # what follows (in the rest of the iteration) may be influenced by superstition about floating-point arithmetic and performance that I haven't had time to debunk
-    mode = mode1_depth
-    for i in range(max_components):
-        modes[i] = mode
-        mode += mode1_depth
-    j = 0
-    sup = 1.5 * mode1_depth
-    for i in range(len(gp)):
-        while gp[i]['avg_depth'] > sup:
-            sup += mode1_depth
-            j += 1
-        counts[j] += 1
-    for i in range(max_components): 
-        if counts[i] < 5:
-            break
-        push_mean_and_label(means_init_py, modes[i], label_mappings_py, i)
-
-    # Could also vary # of components across runs, and choosing the one with the optimal (lowest) BIC
-    means_init = np.array(means_init_py)[:, None]
-    n_components = means_init.size
-    label_mappings = np.array(label_mappings_py)
-    gmm = GaussianMixture(n_components=n_components, covariance_type='spherical', max_iter=120, means_init=means_init, verbose=2) # spherical same as full for 1D estimation
-    gmm.fit(gp['avg_depth'][:, None])
-    obs_label_probs = gmm.predict_proba(gp['avg_depth'][:,None])
-    gmm_gp_label_mappings.append(label_mappings)
-    gmm_gp_modes.append(modes)
+        n_components = 1
+        count = 0
+        sup = 1.5 * mode1_depth
+        for i in range(len(gp)):
+            if gp[i]['avg_depth'] > sup:
+                if count < 20:
+                    break
+                sup += mode1_depth
+                if gp[i]['avg_depth'] > sup:
+                    break
+                n_components += 1
+                count = 0
+            count += 1
+        if count < 20:
+            n_components -= 1
+        n_components = min(n_components, m.floor(overall_80th_pctl / mode1_depth))
+        max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
+    obs_for_kde = gp[np.where(gp['avg_depth'] <= max_for_kde)[0]]['avg_depth'][:, None]
+    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=10)
+    bw_est_grid.fit(obs_for_kde)
+    kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(obs_for_kde)
+    density_pts = np.linspace(0, max_for_kde, max_for_kde * 20 + 1)[:, None]
+    log_dens = kde.score_samples(density_pts)
+    start = m.ceil(n_components * mode1_depth * 20) + 1
+    depth_cutoff = (start + np.argmin(log_dens[start:m.ceil((n_components + 1) * mode1_depth * 20 + 2)]) - 1) / 20
+    cutoffs.append(str(depth_cutoff))
+    gp_for_gmm = gp[np.where(gp['avg_depth'] <= depth_cutoff)[0]]['avg_depth'][:, None]
+    # GMM: spherical same as full for 1D estimation
+    # Vanilla instead of Bayesian GMM used because the latter could need manual tuning (e.g. of weight_concentration_prior)
+    gmm = GaussianMixture(n_components=n_components, covariance_type='spherical', max_iter=120, means_init=(np.arange(1, n_components+1) * mode1_depth)[:, None], verbose=2)
+    gmm.fit(gp_for_gmm)
+    obs_label_probs = gmm.predict_proba(gp_for_gmm)
     gmm_wts.append(gmm.weights_)
     gmm_means.append(gmm.means_)
     gmm_vars.append(gmm.covariances_)
-    for i in range(len(gp)):
+    for i in range(len(gp_for_gmm)):
         likeliest_labels_given = obs_label_probs[i].argsort()[-3:][::-1]
-        if n_components < 3: # to prevent label_mappings' barfing due to dimensional inadequacy
-            likeliest_labels_given = np.lib.pad(likeliest_labels_given, (0, 3 - n_components), 'constant', constant_values=(0,0))
-        labels = label_mappings[likeliest_labels_given]
-        for j in range(3):
-            seqs[gp[i]['ID']]['likeliest_labels'][j] = labels[j]
+        for j in range(min(3, n_components)):
+            seqs[gp[i]['ID']]['likeliest_labels'][j] = likeliest_labels_given[j]
         if n_components < 3:
             for j in range(2, n_components - 1, -1):
                 seqs[gp[i]['ID']]['likeliest_labels'][j] = -1
 
+with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
+    f.write('median unitig avg k-mer depth: ' + str(np.median(seqs['avg_depth'])) + '\n')
+    f.write('mode: ' + str(mode1_depth) + '\n')
+    f.write('80th percentile of average unitig kmer depth: ' + str(overall_80th_pctl) + '\n')
+    f.write('max. depths for inclusion in estimation: ' + ' / '.join(cutoffs) + '\n')
+
+gmm_gp_maxlen = [99, 999, np.inf]
 with open(OUTPUT_DIR + '/params.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
-    header = ['Group max. len.', 'Component #', 'Weight', 'Mean', 'Init. mean', 'Covariance']
+    header = ['Group max. len.', 'Component #', 'Weight', 'Mean', 'Covariance']
     writer.writerow(header)
     for gpidx in range(len(gmm_gp_maxlen)):
         for i in range(len(gmm_wts[gpidx])):
-            writer.writerow([gmm_gp_maxlen[gpidx], gmm_gp_label_mappings[gpidx][i], gmm_wts[gpidx][i], gmm_means[gpidx][i][0], gmm_gp_modes[gpidx][gmm_gp_label_mappings[gpidx][i]], gmm_vars[gpidx][i]])
+            writer.writerow([gmm_gp_maxlen[gpidx], i, gmm_wts[gpidx][i], gmm_means[gpidx][i][0], gmm_vars[gpidx][i]])
 
 seqs.sort(order=['len', 'avg_depth'])
 with open(OUTPUT_DIR + '/sequence-labels-oom.csv', 'w', newline='') as csvfile:
