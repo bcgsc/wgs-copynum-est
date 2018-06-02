@@ -163,7 +163,7 @@ for seq_gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] 
     closest_mode_to_pctl = m.floor(use_pctl / mode1_depth)
     if pctls_in_modes - closest_mode_to_pctl > 0.5:
         closest_mode_to_pctl += 1
-    n_components = min(n_components, use_pctl)
+    n_components = min(n_components, closest_mode_to_pctl)
     max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
     obs_for_kde = gp[np.where(gp['avg_depth'] <= max_for_kde)[0]]['avg_depth'][:, None]
     bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=5)
