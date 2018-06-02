@@ -72,7 +72,7 @@ for i in range(numseqs):
 seqs.sort(order=['kmers', 'avg_depth']) # also sorts by avg_depth, after kmer
 
 # (Basically) the next smallest possible equally sized bins
-BIN_MINSIZE = 500
+BIN_MINSIZE = min(500, numseqs)
 quantile = max(BIN_MINSIZE/numseqs, 0.02) * 100
 if quantile > 2:
     quantile = 100 / m.floor(100 / quantile)
