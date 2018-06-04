@@ -121,6 +121,7 @@ gmm_wts = []
 gmm_means = []
 gmm_vars = []
 seqs.sort(order='ID')
+min_count = 25
 for seq_gp in len_gps:
     gp = np.copy(seq_gp)
     gp.sort(order='avg_depth')
@@ -131,7 +132,7 @@ for seq_gp in len_gps:
     sup = 1.5 * mode1_depth
     for i in range(len(gp)):
         if gp[i]['avg_depth'] > sup:
-            if count < 20:
+            if count < min_count:
                 break
             sup += mode1_depth
             if gp[i]['avg_depth'] > sup:
@@ -139,7 +140,7 @@ for seq_gp in len_gps:
             n_components += 1
             count = 0
         count += 1
-    if count < 20:
+    if count < min_count:
         n_components -= 1
     if overall_80th_pctl < gp_80th_pctl:
         use_pctl = gp_80th_pctl
