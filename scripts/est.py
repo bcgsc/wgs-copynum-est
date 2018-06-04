@@ -121,7 +121,7 @@ gmm_wts = []
 gmm_means = []
 gmm_vars = []
 seqs.sort(order='ID')
-for seq_gp in [seqs[np.where(seqs['len'] < 100)[0]], seqs[np.where((seqs['len'] > 99) & (seqs['len'] < 1000))[0]], seqs[np.where(seqs['len'] > 999)[0]]]:
+for seq_gp in len_gps:
     gp = np.copy(seq_gp)
     gp.sort(order='avg_depth')
     gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
