@@ -16,25 +16,6 @@ def compute_gc_content(seq):
             gc_count += 1
     return (gc_count * 100 / len(seq))
 
-def get_obs_in_range(gp, feature, inf, sup):
-    return gp[np.where((gp[feature] > inf) & (gp[feature] <= sup))[0]]
-
-def get_mean_dev(obs, feature, center):
-    n = len(obs)
-    dev_sum = 0
-    for i in range(n):
-        dev_sum += m.fabs(obs[i][feature] - center)
-    return (dev_sum / n)
-    
-def adjust_wrt_nbr(gp, modes, idx, nidx, half, obs, feature):
-    nbr_obs = get_obs_in_range(gp, feature, modes[nidx] - half, modes[nidx] + half)
-    nbr_mean_dev = get_mean_dev(nbr_obs, feature, modes[nidx])
-    for i in range(len(obs)):
-        if m.fabs(modes[nidx] - obs[i][feature]) <= 2.5 * nbr_mean_dev: # between a rock and a hard place: seems like the least meddlesome intervention
-            #obs[i]['naive_label'] = nidx
-            counts[idx] -= 1
-            counts[nidx] += 1
-
 FASTA_FILE = sys.argv[1]
 KMER_LEN = int(sys.argv[2])
 OUTPUT_DIR = sys.argv[3]
@@ -209,62 +190,3 @@ with open(OUTPUT_DIR + '/sequence-labels.csv', 'w', newline='') as csvfile:
         row.extend(seqs[i]['likeliest_labels'])
         writer.writerow(row)
 
-
-# DEBUG / SANITY CHECKS
-#
-#for i in range(10):
-#    print(repr(seqs[i, 0]) + ' ' + repr(seqs[i, 1]))
-#
-#numseqs = 0
-#for i in range(len(len_gps)):
-#    print(len(len_gps[i]))
-#    numseqs += len(len_gps[i])
-#print(len(len_gps))
-#print(numseqs)
-#print(len(seq_kmers))
-
-# SCRAPS
-#len_gps = np.asarray(len_gps_tmp)
-
-# attempt to excise "error dist." by KDE:
-#shortest_lte_mode1 = np.copy(len_gps[0]['avg_depth'][:,None])
-#shortest_lte_mode1.sort(axis=0)
-#bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.025, 1, 40)}) # bandwidth selection
-#bw_est_grid.fit(shortest_lte_mode1)
-#kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(shortest_lte_mode1)
-#min_depth = shortest_lte_mode1[0][0]
-#log_dens = kde.fit(shortest_lte_mode1).score_samples(np.linspace(min_depth, mode1_depth, (mode1_depth - min_depth) * 100 + 1)[:, None])
-#print(log_dens)
-#print('min density < first mode: ' + str(np.argmin(log_dens) / 100))
-
-# to determine cutoff depth for inclusion in estimation
-#cutoff_region = seqs[np.where((seqs['avg_depth'] >= last_mode) & (seqs['avg_depth'] <= next_mode))[0]]['avg_depth'][:,None]
-#bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.025, 1, 40)}) # bandwidth selection
-#bw_est_grid.fit(cutoff_region)
-#kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(cutoff_region)
-
-# Compare low-count components to neighbours and adjust if appropriate
-#r_obs = get_obs_in_range(gp, 'avg_depth', modes[0], modes[0] + half_component_len)
-#len_obs = len(r_obs)
-#if len_obs > 0 and len_obs <= 5 and len_obs * 5 < counts[1]:
-#    adjust_wrt_nbr(gp, modes, 0, 1, half_component_len, r_obs, 'avg_depth')
-#if counts[0] > 0:
-#    push_mean_and_label(means_init_py, modes[0], label_mappings_py, 0)
-#for i in range(1, max_components-1): 
-#    if counts[i] > 0 and counts[i] <= 10:
-#        l_obs = get_obs_in_range(gp, 'avg_depth', modes[i] - half_component_len, modes[i])
-#        len_obs = len(l_obs)
-#        if len_obs > 0 and len_obs <= 5 and len_obs * 5 < counts[i-1]:
-#            adjust_wrt_nbr(gp, modes, i, i-1, half_component_len, l_obs, 'avg_depth')
-#        r_obs = get_obs_in_range(gp, 'avg_depth', modes[i], modes[i] + half_component_len)
-#        len_obs = len(r_obs)
-#        if len_obs > 0 and len_obs <= 5 and len_obs * 5 < counts[i+1]:
-#            adjust_wrt_nbr(gp, modes, i, i+1, half_component_len, r_obs, 'avg_depth')
-#    if counts[i] > 0:
-#        push_mean_and_label(means_init_py, modes[i], label_mappings_py, i)
-#l_obs = get_obs_in_range(gp, 'avg_depth', modes[-1] - half_component_len, modes[-1])
-#len_obs = len(l_obs)
-#if len_obs > 0 and len_obs <= 5 and len_obs * 5 < counts[-2]:
-#    adjust_wrt_nbr(gp, modes, -1, -2, half_component_len, l_obs, 'avg_depth')
-#if counts[-1] > 0:
-#    push_mean_and_label(means_init_py, modes[-1], label_mappings_py, max_components - 1)
