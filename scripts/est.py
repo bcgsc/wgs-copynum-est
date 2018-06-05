@@ -195,7 +195,7 @@ with open(OUTPUT_DIR + '/params.csv', 'w', newline='') as csvfile:
             writer.writerow([gmm_gp_maxlen[gpidx], i, gmm_wts[gpidx][i], gmm_means[gpidx][i][0], gmm_vars[gpidx][i]])
 
 seqs.sort(order=['len', 'avg_depth'])
-with open(OUTPUT_DIR + '/sequence-labels-oom.csv', 'w', newline='') as csvfile:
+with open(OUTPUT_DIR + '/sequence-labels.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
     header = ['ID', 'Length', 'Average depth', '1st Mode X', 'GC %', 'Likeliest label', '2nd likeliest', '3rd likeliest']
     writer.writerow(header)
