@@ -117,6 +117,7 @@ if np.var(longest_gp) / np.mean(longest_gp) >= 5: # dispersion index
 overall_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
 overall_90th_pctl = np.percentile(seqs['avg_depth'], 90, interpolation='higher')
 cutoffs = []
+gmm_gp_maxlen = []
 gmm_wts = []
 gmm_means = []
 gmm_vars = []
@@ -124,6 +125,7 @@ seqs.sort(order='ID')
 min_count = 25
 for seq_gp in len_gps:
     gp = np.copy(seq_gp)
+    gmm_gp_maxlen.append(np.amax(gp['len']))
     gp.sort(order='avg_depth')
     gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
     gp_90th_pctl = np.percentile(gp['avg_depth'], 90, interpolation='higher')
@@ -184,7 +186,6 @@ with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
     f.write('80th percentile of average unitig kmer depth: ' + str(overall_80th_pctl) + '\n')
     f.write('max. depths for inclusion in estimation: ' + ' / '.join(cutoffs) + '\n')
 
-gmm_gp_maxlen = [99, 999, np.inf]
 with open(OUTPUT_DIR + '/params.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
     header = ['Group max. len.', 'Component #', 'Weight', 'Mean', 'Covariance']
