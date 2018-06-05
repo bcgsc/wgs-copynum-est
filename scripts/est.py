@@ -113,8 +113,6 @@ if np.var(longest_gp) / np.mean(longest_gp) >= 5: # dispersion index
     log_dens = kde.score_samples(density_pts)
     mode1_depth = (np.argmax(log_dens) - 1) / 10
 
-#mode1_depth = 19
-
 overall_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
 overall_90th_pctl = np.percentile(seqs['avg_depth'], 90, interpolation='higher')
 cutoffs = []
