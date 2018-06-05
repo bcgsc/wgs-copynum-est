@@ -60,12 +60,13 @@ if len(seq_kmers) != len(seq_avg_kmer_depths):
     raise SystemExit('Error: kmer array length != average depth array length')
 
 numseqs = len(seq_kmers)
-seqs = np.zeros(numseqs, dtype=[('ID', np.uint64), ('len', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('modex', np.float64), ('gc', np.float64), ('likeliest_labels', np.int, (3,))])
+seqs = np.zeros(numseqs, dtype=[('ID', np.uint64), ('len', np.uint64), ('kmers', np.uint64), ('avg_depth', np.float64), ('modex', np.float64), ('est_gp', np.uint64), ('gc', np.float64), ('likeliest_labels', np.int, (3,))])
 for i in range(numseqs):
     seqs[i]['ID'] = i
     seqs[i]['len'] = seq_lens[i]
     seqs[i]['kmers'] = seq_kmers[i]
     seqs[i]['avg_depth'] = seq_avg_kmer_depths[i]
+    seqs[i]['est_gp'] = -1
     seqs[i]['gc'] = seq_gc_contents[i]
     for j in range(3):
         seqs[i]['likeliest_labels'][j] = sys.maxsize
@@ -118,13 +119,14 @@ overall_80th_pctl = np.percentile(seqs['avg_depth'], 80, interpolation='higher')
 overall_90th_pctl = np.percentile(seqs['avg_depth'], 90, interpolation='higher')
 cutoffs = []
 gmm_gp_maxlen = []
+gmm_gp_maxlabel = []
 gmm_wts = []
 gmm_means = []
 gmm_vars = []
 seqs.sort(order='ID')
 min_count = 25
-for seq_gp in len_gps:
-    gp = np.copy(seq_gp)
+for len_gp_idx in range(len(len_gps)):
+    gp = np.copy(len_gps[len_gp_idx])
     gmm_gp_maxlen.append(np.amax(gp['len']))
     gp.sort(order='avg_depth')
     gp_80th_pctl = np.percentile(gp['avg_depth'], 80, interpolation='higher')
@@ -153,6 +155,7 @@ for seq_gp in len_gps:
     if pctls_in_modes - closest_mode_to_pctl > 0.5:
         closest_mode_to_pctl += 1
     n_components = min(n_components, closest_mode_to_pctl)
+    gmm_gp_maxlabel.append(n_components - 1)
     max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
     obs_for_kde = gp[np.where(gp['avg_depth'] <= max_for_kde)[0]]['avg_depth'][:, None]
     bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=5)
@@ -173,12 +176,15 @@ for seq_gp in len_gps:
     gmm_means.append(gmm.means_)
     gmm_vars.append(gmm.covariances_)
     for i in range(len(gp_for_gmm)):
+        seqs[gp[i]['ID']]['est_gp'] = len_gp_idx
         likeliest_labels_given = obs_label_probs[i].argsort()[-3:][::-1]
         for j in range(min(3, n_components)):
             seqs[gp[i]['ID']]['likeliest_labels'][j] = likeliest_labels_given[j]
         if n_components < 3:
             for j in range(2, n_components - 1, -1):
                 seqs[gp[i]['ID']]['likeliest_labels'][j] = -1
+    for i in range(len(gp_for_gmm), len(gp)):
+        seqs[gp[i]['ID']]['est_gp'] = len_gp_idx
 
 with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
     f.write('median unitig avg k-mer depth: ' + str(np.median(seqs['avg_depth'])) + '\n')
@@ -188,20 +194,20 @@ with open(OUTPUT_DIR + '/log.txt', 'w', newline='') as f:
 
 with open(OUTPUT_DIR + '/params.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
-    header = ['Group max. len.', 'Component #', 'Weight', 'Mean', 'Covariance']
+    header = ['Group max. len.', 'Group max. label', 'Component #', 'Weight', 'Mean', 'Covariance']
     writer.writerow(header)
     for gpidx in range(len(gmm_gp_maxlen)):
         for i in range(len(gmm_wts[gpidx])):
-            writer.writerow([gmm_gp_maxlen[gpidx], i, gmm_wts[gpidx][i], gmm_means[gpidx][i][0], gmm_vars[gpidx][i]])
+            writer.writerow([gmm_gp_maxlen[gpidx], gmm_gp_maxlabel[gpidx], i, gmm_wts[gpidx][i], gmm_means[gpidx][i][0], gmm_vars[gpidx][i]])
 
 seqs.sort(order=['len', 'avg_depth'])
 with open(OUTPUT_DIR + '/sequence-labels.csv', 'w', newline='') as csvfile:
     writer = csv.writer(csvfile, delimiter=',')
-    header = ['ID', 'Length', 'Average depth', '1st Mode X', 'GC %', 'Likeliest label', '2nd likeliest', '3rd likeliest']
+    header = ['ID', 'Length', 'Average depth', '1st Mode X', 'GC %', 'Group max. label', 'Likeliest label', '2nd likeliest', '3rd likeliest']
     writer.writerow(header)
     for i in range(numseqs):
         seqs[i]['modex'] = seqs[i]['avg_depth'] / mode1_depth
-        row = [seqs[i]['ID'], seqs[i]['len'], seqs[i]['avg_depth'], seqs[i]['modex'], seqs[i]['gc']]
+        row = [seqs[i]['ID'], seqs[i]['len'], seqs[i]['avg_depth'], seqs[i]['modex'], seqs[i]['gc'], gmm_gp_maxlabel[seqs[i]['est_gp']]]
         row.extend(seqs[i]['likeliest_labels'])
         writer.writerow(row)
 
