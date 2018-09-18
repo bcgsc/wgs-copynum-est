@@ -19,7 +19,7 @@ $ cp <ref_aln_sam> <ref_aln_sam_cp>
 $ vim <ref_aln_sam_cp>
 
 Parse SAM; write to <ref_aln_counts_csv>
-$ python /projects/btl/yflim/copy-num-est/scripts/results/process/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv> <error_log> <missing_seqs_log>
+$ python /projects/btl/yflim/copy-num-est/scripts/results/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv> <error_log> <missing_seqs_log>
 
 Remove error and missing logs if empty
 $ rm <error_log>
