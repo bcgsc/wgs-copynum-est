@@ -36,9 +36,9 @@ $ python scripts/results/process/combine-est-bwa-outputs.py <est_seq_labels> dat
 $ python scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <summary_stats>
  
 Move results, e.g.:
-$ mv params.csv data/celegans/assemblies/DRR008444/k80/results/aln-est/full/20180329/
-$ mv <est_seq_labels> data/celegans/assemblies/DRR008444/k80/results/aln-est/full/20180329/
-$ mv <seq_aln_and_est> data/celegans/assemblies/DRR008444/k80/results/aln-est/full/20180329/
-$ mv <aln_est_counts> data/celegans/assemblies/DRR008444/k80/results/aln-est/summary/20180329/
-$ mv <aln_est_ranks> data/celegans/assemblies/DRR008444/k80/results/aln-est/summary/20180329/
-$ mv <summary_stats> data/celegans/assemblies/DRR008444/k80/results/aln-est/summary/20180329/
+$ mv params.csv data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/full/
+$ mv <est_seq_labels> data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/full/
+$ mv <seq_aln_and_est> data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/full/
+$ mv <aln_est_counts> data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/summary/
+$ mv <aln_est_ranks> data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/summary/
+$ mv <summary_stats> data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/summary/
