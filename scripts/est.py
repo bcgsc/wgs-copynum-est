@@ -118,7 +118,7 @@ for len_gp_idx in range(len(len_gps)):
             if count < min_count:
                 break
             sup += mode1_depth
-            if gp[i]['avg_depth'] > sup:
+            if gp[i]['avg_depth'] > sup: # skipped 1 hypothetical component, i.e. w/ 0 observations
                 break
             n_components += 1
             count = 0
