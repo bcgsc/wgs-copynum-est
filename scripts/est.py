@@ -140,10 +140,11 @@ for len_gp_idx in range(len(len_gps)):
     bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=5)
     bw_est_grid.fit(obs_for_kde)
     kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(obs_for_kde)
-    density_pts = np.linspace(0, max_for_kde, max_for_kde * 20 + 1)[:, None]
+    pts_per_unit = 20
+    density_pts = np.linspace(0, max_for_kde, max_for_kde * pts_per_unit + 1)[:, None]
     log_dens = kde.score_samples(density_pts)
-    start = m.ceil(n_components * mode1_depth * 20) + 1
-    depth_cutoff = (start + np.argmin(log_dens[start:m.ceil((n_components + 1) * mode1_depth * 20 + 2)]) - 1) / 20
+    start = m.ceil(n_components * mode1_depth * pts_per_unit) + 1
+    depth_cutoff = (start + np.argmin(log_dens[start:m.ceil((n_components + 1) * mode1_depth * pts_per_unit + 2)]) - 1) / pts_per_unit
     cutoffs.append(str(depth_cutoff))
     gp_for_gmm = gp[np.where(gp['avg_depth'] <= depth_cutoff)[0]]['avg_depth'][:, None]
     # GMM: spherical same as full for 1D estimation
