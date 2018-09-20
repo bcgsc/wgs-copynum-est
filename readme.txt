@@ -33,7 +33,7 @@ Combine estimation and reference alignment data; output goes to <seq_aln_and_est
 $ python scripts/results/process/combine-est-bwa-outputs.py <est_seq_labels> data/celegans/assemblies/DRR008444/k80/aln/k80w5d50/<ref_aln_counts_csv> <number_of_seqs>
 
 3. Compute summary stats; repeat for the various groups (e.g. sequences shorter than 100bps, etc.)
-$ python scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <summary_stats>
+$ python scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <counts> <counts_nb> <summary_stats> <summary_stats_nb> 
  
 Move results, e.g.:
 $ mv params.csv data/celegans/assemblies/DRR008444/k80/results/aln-est/20180329/full/
