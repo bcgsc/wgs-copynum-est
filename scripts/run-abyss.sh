@@ -13,9 +13,11 @@ export mpirun="mpirun --mca btl_sm_eager_limit $eager_limit --mca btl_openib_eag
 # for ABySS binaries
 export PATH=/projects/btl/benv/arch/xhost/abyss-2.0.2/jemalloc-4.5.0/maxk256/bin:$PATH
 
-# input reads
-read1=/projects/btl/datasets/celegans/N2strain/DRR008444_1.fastq
-read2=/projects/btl/datasets/celegans/N2strain/DRR008444_2.fastq
+# input reads (must use absolute paths)
+read1=$1
+shift
+read2=$1
+shift
 
 # k-mer size
 k=$1
