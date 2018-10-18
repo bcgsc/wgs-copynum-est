@@ -169,10 +169,10 @@ for i in range(6):
 counts_header_for_r = ['aln', 'est', 'count', 'avg_avg_depth', 'avg_gc']
 ranks_header_for_r = ['aln', 'est_rank', 'count']
 
-count_files = ['aln-est-counts.csv', 'aln-est-counts-lt100.csv', 'aln-est-counts-lt1000.csv', 'aln-est-counts-lt10000.csv', 'aln-est-counts-10000plus.csv']
-count_files_r = ['aln-est-counts-r.csv', 'aln-est-counts-lt100-r.csv', 'aln-est-counts-lt1000-r.csv', 'aln-est-counts-lt10000-r.csv', 'aln-est-counts-10000plus-r.csv']
-rank_files = ['aln-est-ranks.csv', 'aln-est-ranks-lt100.csv', 'aln-est-ranks-lt1000.csv', 'aln-est-ranks-lt10000.csv', 'aln-est-ranks-10000plus.csv']
-rank_files_r = ['aln-est-ranks-r.csv', 'aln-est-ranks-lt100-r.csv', 'aln-est-ranks-lt1000-r.csv', 'aln-est-ranks-lt10000-r.csv', 'aln-est-ranks-10000plus-r.csv']
+count_files = ['aln-est_counts.csv', 'aln-est_counts_lt100.csv', 'aln-est_counts_lt1000.csv', 'aln-est_counts_lt10000.csv', 'aln-est_counts_gte10000.csv']
+count_files_r = ['aln-est_counts_r.csv', 'aln-est_counts_lt100_r.csv', 'aln-est_counts_lt1000_r.csv', 'aln-est_counts_lt10000_r.csv', 'aln-est_counts_gte10000_r.csv']
+rank_files = ['aln-est_ranks.csv', 'aln-est_ranks_lt100.csv', 'aln-est_ranks_lt1000.csv', 'aln-est_ranks_lt10000.csv', 'aln-est_ranks_gte10000.csv']
+rank_files_r = ['aln-est_ranks_r.csv', 'aln-est_ranks_lt100_r.csv', 'aln-est_ranks_lt1000_r.csv', 'aln-est_ranks_lt10000_r.csv', 'aln-est_ranks_gte10000_r.csv']
 tables = [table, table_lt100, table_lt1000, table_lt10000, table_10000plus]
 rank_count_arrays = [rank_counts, rank_counts_lt100, rank_counts_lt1000, rank_counts_lt10000, rank_counts]
 brackets = len(tables)
