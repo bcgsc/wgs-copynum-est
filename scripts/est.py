@@ -75,7 +75,7 @@ if len(len_gps[0]) < BIN_MINSIZE and len(len_gps) > 1:
     len_gps.pop(0)
 
 # estimate 1st mode from longest seqs
-bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}, cv=20) # bandwidth selection; default cross-validation (o/w specify e.g. cv=20)
+bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 2.0, 40)}, cv=15) # k-fold cross-validation for bandwidth selection
 longest_gp = np.copy(len_gps[-1]['avg_depth'][:,None])
 longest_gp.sort(axis=0)
 max_depth = longest_gp[-1][0]
@@ -86,7 +86,7 @@ log_dens = kde.score_samples(density_pts)
 mode1_depth = np.argmax(log_dens) / 10
 if np.var(longest_gp) / np.mean(longest_gp) >= 5: # dispersion index
     truncated_depths = longest_gp[np.where(longest_gp < min(first_mode * 10, np.percentile(longest_gp, 99.8)))[0]]
-    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.3, 26)}, cv=20) # bandwidth selection
+    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.3, 26)}, cv=15)
     bw_est_grid.fit(truncated_depths)
     kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(truncated_depths)
     max_depth = truncated_depths[-1][0]
@@ -137,7 +137,7 @@ for len_gp_idx in range(len(len_gps)):
     gmm_gp_maxlabel.append(n_components - 1)
     max_for_kde = max((n_components + 2) * mode1_depth, gp_90th_pctl)
     obs_for_kde = gp[np.where(gp['avg_depth'] <= max_for_kde)[0]]['avg_depth'][:, None]
-    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=5)
+    bw_est_grid = GridSearchCV(KernelDensity(), {'bandwidth': np.linspace(0.05, 1.5, 30)}, cv=20)
     bw_est_grid.fit(obs_for_kde)
     kde = KernelDensity(kernel='gaussian', bandwidth=bw_est_grid.best_params_['bandwidth']).fit(obs_for_kde)
     pts_per_unit = 20
