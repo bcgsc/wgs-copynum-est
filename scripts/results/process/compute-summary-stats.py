@@ -90,7 +90,7 @@ with open(NB_COUNTS_FILE, 'w') as csvfile:
         writer.writerow(rows[i])
 
 # F1 calculation
-# Let c = # of correct +ves, p = precision (TP rate), r = recall (sensitivity)
+# Let c = # of correct +ves, p = precision, r = recall (a.k.a. TPR or sensitivity)
 # p0 = # actually +ve, p1 = # classified as +ve
 # Then p = c / p1, r = c / p0, and
 # F1 = 2 / (1/p + 1/r) = 2 / (p1/c + p0/c) = 2c / (p0 + p1)
