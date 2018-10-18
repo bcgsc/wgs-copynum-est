@@ -96,18 +96,18 @@ with open(EST_OUTPUT, newline='') as estfile:
         seqs[seqID]['length'] = int(row[1])
         seqs[seqID]['avg_depth'] = float(row[2])
         seqs[seqID]['gc'] = float(row[4])
-        if int(row[5]) >= 0:
-            seqs[seqID]['1st_label'] = int(row[5]) + 1
-        else:
-            seqs[seqID]['1st_label'] = sys.maxsize
         if int(row[6]) >= 0:
-            seqs[seqID]['2nd_label'] = int(row[6]) + 1
+            seqs[seqID]['1st_label'] = int(row[6]) + 1
         else:
-            seqs[seqID]['2nd_label'] = sys.maxsize
+            seqs[seqID]['1st_label'] = np.Inf
         if int(row[7]) >= 0:
-            seqs[seqID]['3rd_label'] = int(row[7]) + 1
+            seqs[seqID]['2nd_label'] = int(row[7]) + 1
         else:
-            seqs[seqID]['3rd_label'] = sys.maxsize
+            seqs[seqID]['2nd_label'] = np.Inf
+        if int(row[8]) >= 0:
+            seqs[seqID]['3rd_label'] = int(row[8]) + 1
+        else:
+            seqs[seqID]['3rd_label'] = np.Inf
 
 with open(BWA_PARSE_OUTPUT, newline='') as alnfile:
     reader = csv.reader(alnfile, delimiter='\t')
