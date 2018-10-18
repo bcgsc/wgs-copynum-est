@@ -15,9 +15,13 @@ $ cd N2
 
 Create folder for reference, e.g.:
 $ mkdir reference
+...
+Index for BWA:
+$ bwa index reference/celegans.N2.genome.fa
 
 Create folder for datasets, e.g.:
 $ mkdir datasets
+...
 
 Create folder(s) for simulations, e.g.:
 $ mkdir simulations
@@ -27,9 +31,17 @@ $ cd 50x
 $ mkdir diploid
 $ cd diploid
 $ dwgsim -e 0.001-0.015 -E 0.002-0.03 -d 150 -C 50 -1 150 -2 150 -n 100 ../../../reference_genomes/celegans.N2.genome.fa diploid.fastq
+$ cd ..
 $ mkdir haploid
 $ cd haploid
 $ dwgsim -e 0.001-0.015 -E 0.002-0.03 -d 150 -C 50 -1 150 -2 150 -n 100 -H ../../../reference_genomes/celegans.N2.genome.fa diploid.fastq
+$ cd ..
+
+Write mutated reference from simulation:
+$ python <HOME>/scripts/utils/simulations/write_mutated_reference.py ../../../reference_genomes/N2/celegans.N2.genome.fa diploid/diploid.fastq.mutations.txt 
+Index for BWA:
+bwa index diploid/diploid.fastq.mutations.txt 
+
 
 2. Can be done just once per dataset (including each set of simulated reads). (Starting from species folder, data/celegans.)
 
@@ -51,35 +63,43 @@ $ mv k80 abyss-out
 
 Create folder for alignment, e.g.:
 $ mkdir aln
-$ mkdir aln/w5d50
+[$ mkdir aln/w5d50]
 
 Run BWA-mem to align unitigs to reference; output to SAM file. E.g.:
+a. For a real sequencing dataset: 
 $ bwa mem -a -k 80 -w 5 -d 50 -c 10000 ../../../reference/<genome_fa> abyss-out/<unitigs_fa> > aln/w5d50/<ref_aln_sam>
 $ cd aln/w5d50/
+b. For a simulated dataset:
+$ bwa mem -a ../../../reference/<genome_fa> abyss-out/<unitigs_fa> > aln/<ref_aln_sam>
+$ cat aln/<ref_aln_sam> | perl -ne 'print if /\t\d+M\t/ && /NM:i:0/' > aln/<perfect_matches_sam>
 
-Edit out header from <ref_aln_sam>
+Edit out header from <ref_aln_sam>, e.g.:
 $ cp <ref_aln_sam> <ref_aln_sam_cp>
 $ vim <ref_aln_sam_cp>
 
 Parse SAM; write to <ref_aln_counts_csv>
-$ python /projects/btl/yflim/copy-num-est/scripts/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv> <error_log> <missing_seqs_log>
+a. For a real sequencing dataset: 
+$ python <HOME>/scripts/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv> <error_log>
+b. For a simulated dataset:
+$ python <HOME>/scripts/utils/sam-parse.py aln/<perfect_matches_sam> aln/<ref_aln_counts_csv> aln/<error_log>
 
-Remove error and missing logs if empty
-$ rm <error_log>
-$ rm <missing_seqs_log>
-$ cd ../.. 
+Remove error and missing logs if empty, e.g.:
+$ rm aln/w5d50/<error_log>
+$ rm aln/w5d50/<missing_seqs_log>
+
+[$ cd ../..]
 
 Create folder for estimation results:
 $ mkdir results
-$ mkdir results/aln-est
+$ mkdir results/<date>
 
 3. Create folder for specific estimator version results and file describing version details; run estimator, which writes to output files in <output_dir>
-$ mkdir results/aln-est/<output_dir>
-$ vim results/aln-est/<output_dir>/meta.txt
-$ python <HOME>/scripts/est.py abyss-out/<unitigs_fasta> <k> results/aln-est/<output_dir>
+$ mkdir results/<output_dir>
+$ vim results/<output_dir>/meta.txt
+$ python <HOME>/scripts/est.py abyss-out/<unitigs_fasta> <k> results/<output_dir>
 
 Combine estimation and reference alignment data; output goes to <seq_aln_and_est>, and <aln_est_counts> and <aln_est_ranks> files
-$ cd results/aln-est/<output_dir>/
+$ cd results/<output_dir>/
 $ python <HOME>/scripts/results/process/combine-est-bwa-outputs.py <est_seq_labels> ../../../aln/w5d50/<ref_aln_counts_csv> <number_of_seqs>
 Create folders for "full" and summary results; move files accordingly:
 $ mkdir full
@@ -91,4 +111,9 @@ $ mv <est_seq_labels> full
 4. Compute summary stats; repeat for the various groups (e.g. sequences shorter than 100bps, etc.)
 $ cd summary
 $ python <HOME>/scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <counts> <counts_nb> <summary_stats> <summary_stats_nb> 
- 
+
+5. Create plots
+$ cd ..
+$ mkdir plots
+$ cd plots
+$ python <HOME>/scripts/results/plotting/component-densities.py ../full/<seq_aln_and_est> <density_plot_files_prefix>
