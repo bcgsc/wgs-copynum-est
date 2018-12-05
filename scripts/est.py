@@ -261,7 +261,6 @@ for mode1_copynum in [1, 2]:
                     params[model.prefix + 'center'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'center')
                     params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
                 params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT)
-            else:
         
         j = i + 1
         if j * mode < depths[-1]:
@@ -328,8 +327,6 @@ for mode1_copynum in [1, 2]:
         # TODO: Delete blank line
         sigma_min = result.params[components[smallest_copynum].prefix + 'sigma'].value / smallest_copynum
         
-        if re.match('gauss', prefix_next):
-
         if smallest_copynum > 1:
             copynum_depth_lbs[mode1_copynum - 1][len_gp_idx].append(None)
             copynum_depth_maxs[mode1_copynum - 1][len_gp_idx].append(None)
@@ -359,8 +356,8 @@ for mode1_copynum in [1, 2]:
                 #ub = nsolve((wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2))), (idx + 0.5) * result.params['gauss1_center'].value)
                 def densities_diff(x):
                     return (wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2)))
-                roots = optimize.root(densities_diff, (idx + 0.5) * result.params['gauss1_center'].value)
-                debug_file.write('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value) + ', roots: ' + str(roots) + '\n')
+                roots = optimize.root(densities_diff, (idx + 0.5) * result.params[prefix_i + 'center'].value)
+                debug_file.write('start: ' + str((idx + 0.5) * result.params[prefix_i + 'center'].value) + ', roots: ' + str(roots) + '\n')
                 #print('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value))
                 ub = roots.x[0]
             else:
