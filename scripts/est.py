@@ -192,6 +192,7 @@ for mode1_copynum in [1, 2]:
             soft_lb_idx = int(val_to_grid_idx(depths[0] + 1, grid_min, kde_grid_density))
             min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:int(val_to_grid_idx(np.percentile(depths, 20), grid_min, kde_grid_density))])
         
+        # confusing variable names follow: mode (soon) represents cp#1, while mode_idx represents the index at which maximum density occurs, whether cp#1 or 2
         if np.isnan(mode):
             mode_idx = min_density_depth_idx_1 + np.argmax(density[min_density_depth_idx_1:(len(density))])
             mode = grid_idx_to_val(mode_idx, kde_grid_density, grid_min)
@@ -211,8 +212,22 @@ for mode1_copynum in [1, 2]:
         sigma = np.std(get_approx_component_obs(depths, mode * mode1_copynum, mode, depths[0])) / mode1_copynum
         sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
         component_weights = [np.nan] * mode1_copynum 
-        curr_denominator = mode1_copynum * sigma_sqrt_2pi
-        mode_component_wt = curr_denominator * get_density_for_idx(mode_idx, density)
+        mode_density = get_density_for_idx(mode_idx, density)
+        semiweighted_density = stats.norm.pdf(mode * mode1_copynum, mode * mode1_copynum, sigma * mode1_copynum)
+        if mode1_copynum == 2:
+            if mode >= depths[0]:
+                unweighted = stats.norm.pdf(mode * mode1_copynum, mode, sigma)
+                semiweighted_density += (get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) * unweighted / mode_density)
+            if 3 * mode <= depths[-1]:
+                unweighted = stats.norm.pdf(mode * mode1_copynum, 3 * mode, 3 * sigma)
+                semiweighted_density += (get_density_for_idx(val_to_grid_idx(3 * mode, grid_min, kde_grid_density), density) * unweighted / mode_density)
+        else:
+            if 2 * mode <= depths[-1]:
+                unweighted = stats.norm.pdf(mode, 2 * mode, 2 * sigma)
+                semiweighted_density += (get_density_for_idx(val_to_grid_idx(2 * mode, grid_min, kde_grid_density), density) * unweighted / mode_density)
+        
+        # TODO: Delete preceding blank line
+        mode_component_wt = mode_density / semiweighted_density
         component_weights.append(mode_component_wt)
         del mode_idx
         smallest_copynum = 1
@@ -220,7 +235,8 @@ for mode1_copynum in [1, 2]:
             if mode < depths[0]:
                 component_weights[1] = 0
             else:
-                component_weights[1] = max(0, get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) - (mode_component_wt * stats.norm.pdf(mode, 2*mode, 2*sigma)))
+                diff = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) - (mode_component_wt * stats.norm.pdf(mode, 2*mode, 2*sigma))
+                component_weights[1] = max(0, diff * sigma_sqrt_2pi)
             if component_weights[1] == 0:
                 smallest_copynum = 2
         
@@ -231,11 +247,10 @@ for mode1_copynum in [1, 2]:
                 adjacent = 1
             adjacent_density = adjacent * component_weights[i] * stats.norm.pdf((i+1) * mode, i * mode, i * sigma)
             density_next_mode = max(0, get_density_for_idx(val_to_grid_idx((i+1) * mode, grid_min, kde_grid_density), density) - adjacent_density)
-            if density_next_mode > 0.5:
-                i += 1
-                curr_denominator = i * sigma_sqrt_2pi
-                component_weights.append(curr_denominator * density_next_mode) 
-            else:
+            i += 1
+            curr_denominator = i * sigma_sqrt_2pi
+            component_weights.append(curr_denominator * density_next_mode) 
+            if density_next_mode <= 0.5:
                 break
         
         params = Parameters()
@@ -262,43 +277,12 @@ for mode1_copynum in [1, 2]:
                     params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
                 params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT)
         
-        j = i + 1
-        if j * mode < depths[-1]:
-            curr_mode = j * mode
-            tail_stats = stats.describe(depths[depths > curr_mode])
-            tail_mean_density = get_density_for_idx(val_to_grid_idx(tail_stats.mean, grid_min, kde_grid_density), density)
-            est_components_left = (depths[-1] - (i + 0.5) * mode) / mode
-            tail_fat_enough = (est_components_left >= 100) or (np.percentile(depths, 100 - est_components_left) > (i + 0.5) * mode)
-            if tail_fat_enough and (tail_mean_density >= 3 * component_weights[i] * stats.norm.pdf(tail_stats.mean, i * mode, i * sigma)):
-                gamma_model = Model(gamma, prefix='gamma_')
-                components.append(gamma_model)
-                # rough guesses (likely overestimates) for starting parameter values
-                pre = 0.5 * depths[(depths > (j-1) * mode) & (depths <= curr_mode)].size
-                post = depths[depths > curr_mode].size
-                pre_fraction = pre * 1.0 / (pre + post)
-                loc = curr_mode - (2 * mode)
-                mean_start = pre_fraction * curr_mode + (1 - pre_fraction) * tail_stats.mean
-                var_start = pre_fraction * j**2 * sigma_min**2 + (1 - pre_fraction) * tail_stats.variance #iffyy...??
-                shape_start = 1 + ((curr_mode - loc) * (mean_start - loc) / var_start)
-                params.update(gamma_model.make_params())
-                params['gamma_mode_constraint'] = Parameter(value = mean_start - m.sqrt(var_start / shape_start), min = curr_mode + NONNEG_CONSTANT)
-                params['gamma_shape'].set(value = shape_start, min = 1 + NONNEG_CONSTANT)
-                params['gamma_var_constraint'] = Parameter(value = var_start, min = j**2 * sigma_min**2 + NONNEG_CONSTANT)
-                params['gamma_scale'].set(expr = 'sqrt(gamma_var_constraint / gamma_shape)')
-                params['gamma_mean_constraint'] = Parameter(expr = 'gamma_mode_constraint + gamma_scale')
-                params['gamma_loc'].set(expr = 'gamma_mean_constraint - (gamma_shape * gamma_scale)')
-                gamma_weight = 'gamma_wt_'
-                gamma_weight_model = ConstantModel(prefix=gamma_weight)
-                gamma_weight_model.set_param_hint('c', value = max(component_weights[i], (pre + post) * 1.0 / depths.size), min=NONNEG_CONSTANT)
-                params.update(gamma_weight_model.make_params())
-                copynum_components = copynum_components + gamma_weight_model * gamma_model
-                weight_expr += ' + ' + gamma_weight + 'c'
-        
         genome_scale_model = ConstantModel(prefix='genomescale_')
         params.update(genome_scale_model.make_params(c=depths.size))
         mixture_model = genome_scale_model * copynum_components
 
         gp_copynums[mode1_copynum - 1][len_gp_idx] = len(components) - components.count(None)
+        # TODO: Remove? (If found to be unnecessary)
         if gp_copynums[mode1_copynum - 1][len_gp_idx] == 1:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
         else: # TODO: Try to specify better
@@ -348,41 +332,16 @@ for mode1_copynum in [1, 2]:
             sigma_i = result.params[prefix_i + 'sigma'].value
             #x = Symbol('x', real=True)
             #x = Symbol('x')
-            if re.match('gauss', prefix_next):
-                print('Next Gauss')
-                wt_next = result.params[prefix_next + 'amplitude'].value
-                mean_next = result.params[prefix_next + 'center'].value
-                sigma_next = result.params[prefix_next + 'sigma'].value
-                #ub = nsolve((wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2))), (idx + 0.5) * result.params['gauss1_center'].value)
-                def densities_diff(x):
-                    return (wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2)))
-                roots = optimize.root(densities_diff, (idx + 0.5) * result.params[prefix_i + 'center'].value)
-                debug_file.write('start: ' + str((idx + 0.5) * result.params[prefix_i + 'center'].value) + ', roots: ' + str(roots) + '\n')
-                #print('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value))
-                ub = roots.x[0]
-            else:
-                print('Next Gamma')
-                wt_next = result.params['gamma_wt_c'].value
-                shape = result.params[prefix_next + 'shape'].value
-                loc = result.params[prefix_next + 'loc'].value
-                scale = result.params[prefix_next + 'scale'].value
-                mean_next = shape * scale + loc
-                sigma_next = m.sqrt(shape * scale**2)
-                print(str(loc) + ', ' + str(shape) + ', ' + str(scale))
-                print(str(mean_next) + ', ' + str(sigma_next))
-                #print(str(gamma_fn(shape)))
-                #print()
-                #density_i = wt_i * (m.e ** (-0.5 * ((x - mean_i) / sigma_i)**2)) / (m.sqrt(2 * m.pi) * sigma_i)
-                #density_next = ((x - loc)**(shape - 1)) * (m.e ** ((loc - x) / scale)) / (gamma_fn(shape) * scale**shape)
-                #ub = nsolve(density_i - density_next, 0.5 * (mean_next + mean_i))
-                def densities_diff(x):
-                    density_i = wt_i * (m.e ** (-0.5 * ((x - mean_i) / sigma_i)**2)) / (m.sqrt(2 * m.pi) * sigma_i)
-                    density_next = ((x - loc)**(shape - 1)) * (m.e ** ((loc - x) / scale)) / (gamma_fn(shape) * scale**shape)
-                    return density_i - density_next
-                roots = optimize.root(densities_diff, 0.5 * (mean_next - scale + mean_i)) # mean of modes (gamma mode = mean - scale)
-                debug_file.write('start: ' + str(0.5 * (mean_next - scale + mean_i)) + 'roots: ' + str(roots) + '\n')
-                print('start: ' + str(0.5 * (mean_next - scale + mean_i)))
-                ub = roots.x[0]
+            wt_next = result.params[prefix_next + 'amplitude'].value
+            mean_next = result.params[prefix_next + 'center'].value
+            sigma_next = result.params[prefix_next + 'sigma'].value
+            #ub = nsolve((wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2))), (idx + 0.5) * result.params['gauss1_center'].value)
+            def densities_diff(x):
+                return (wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2)))
+            roots = optimize.root(densities_diff, (idx + 0.5) * result.params[prefix_i + 'center'].value)
+            debug_file.write('start: ' + str((idx + 0.5) * result.params[prefix_i + 'center'].value) + ', roots: ' + str(roots) + '\n')
+            #print('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value))
+            ub = roots.x[0]
             debug_file.write('ub: ' + str(ub) + '\n')
             #print('ub: ' + str(ub))
             seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb) & (seqs.mean_kmer_depth <= ub), 'likeliest_copynum'] = idx
