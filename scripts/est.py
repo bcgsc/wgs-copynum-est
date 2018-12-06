@@ -422,7 +422,7 @@ for mode1_copynum in [1, 2]:
     debug_file.close()
 
     seq_label_filename = OUTPUT_DIR + '/sequence-labels-' + str(mode1_copynum) + '.csv'
-    seqs.to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
+    seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
 
 # TODO: Store these data in Pandas arrays DUUUHHHHHHHH
 for mode1_copynum in [1, 2]:
