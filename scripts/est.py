@@ -139,7 +139,11 @@ copynum_stdevs = []
 
 # Fit under assumption that first peak corresponds to mode of copy-number 1 or 2 (unique homozygous) sequences
 mode_error = 0.05
-for mode1_copynum in [1, 2]:
+mode1_copynums = [1, 2]
+if length_gps_count > 3:
+    mode1_copynums.extend([3, 4])
+
+for mode1_copynum in mode1_copynums:
     log_file = open(OUTPUT_DIR + '/log' + str(mode1_copynum) + '.txt', 'w', newline='')
     # TODO: Rm debug file
     debug_file = open(OUTPUT_DIR + '/debug' + str(mode1_copynum) + '.txt', 'w', newline='')
@@ -162,6 +166,7 @@ for mode1_copynum in [1, 2]:
         copynum_wts[mode1_copynum - 1].append([None])
         copynum_means[mode1_copynum - 1].append([None])
         copynum_stdevs[mode1_copynum - 1].append([None])
+
     for len_gp_idx in range(length_gps_count - 1, -1, -1):
         debug_file.write(str(len_gp_idx) + '\n')
         print(len_gp_idx)
