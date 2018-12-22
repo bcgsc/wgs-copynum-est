@@ -38,9 +38,9 @@ $ dwgsim -e 0.001-0.015 -E 0.002-0.03 -d 150 -C 50 -1 150 -2 150 -n 100 -H ../..
 $ cd ..
 
 Write mutated reference from simulation:
-$ python <HOME>/scripts/utils/simulations/write_mutated_reference.py ../../../reference_genomes/N2/celegans.N2.genome.fa diploid/diploid.fastq.mutations.txt 
+$ python <HOME>/scripts/utils/simulations/write_mutated_reference.py ../../../reference_genomes/N2/celegans.N2.genome.fa diploid/diploid.fastq.mutations.txt
 Index for BWA:
-bwa index diploid/diploid.fastq.mutations.txt 
+bwa index diploid/diploid.fastq.mutations.txt
 
 
 2. Can be done just once per dataset (including each set of simulated reads). (Starting from species folder, data/celegans.)
@@ -66,7 +66,7 @@ $ mkdir aln
 [$ mkdir aln/w5d50]
 
 Run BWA-mem to align unitigs to reference; output to SAM file. E.g.:
-a. For a real sequencing dataset: 
+a. For a real sequencing dataset:
 $ bwa mem -a -k 80 -w 5 -d 50 -c 10000 ../../../reference/<genome_fa> abyss-out/<unitigs_fa> > aln/w5d50/<ref_aln_sam>
 $ cd aln/w5d50/
 b. For a simulated dataset:
@@ -78,7 +78,7 @@ $ cp <ref_aln_sam> <ref_aln_sam_cp>
 $ vim <ref_aln_sam_cp>
 
 Parse SAM; write to <ref_aln_counts_csv>
-a. For a real sequencing dataset: 
+a. For a real sequencing dataset:
 $ python <HOME>/scripts/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv> <error_log>
 b. For a simulated dataset:
 $ python <HOME>/scripts/utils/sam-parse.py aln/<perfect_matches_sam> aln/<ref_aln_counts_csv> aln/<error_log>
@@ -110,7 +110,7 @@ $ mv <est_seq_labels> full
 
 4. Compute summary stats; repeat for the various groups (e.g. sequences shorter than 100bps, etc.)
 $ cd summary
-$ python <HOME>/scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <counts> <counts_nb> <summary_stats> <summary_stats_nb> 
+$ python <HOME>/scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <counts> <counts_nb> <summary_stats> <summary_stats_nb>
 
 5. Create plots
 $ cd ..
