@@ -235,7 +235,8 @@ for mode1_copynum in [1, 2]:
             if mode < depths[0]:
                 component_weights[1] = 0
             else:
-                component_weights[1] = max(0, get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) - (mode_component_wt * stats.norm.pdf(mode, 2*mode, 2*sigma)))
+                diff = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) - (mode_component_wt * stats.norm.pdf(mode, 2*mode, 2*sigma))
+                component_weights[1] = max(0, diff * sigma_sqrt_2pi)
             if component_weights[1] == 0:
                 smallest_copynum = 2
 
