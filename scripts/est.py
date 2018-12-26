@@ -178,13 +178,13 @@ for mode1_copynum in [1, 2]:
         grid_min = depths[0] - offset
         kde_grid = np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, grid_min, kde_grid_density) + 1)
         density = kde.evaluate(kde_grid)
-        
+
         gp_min_lens[mode1_copynum - 1][len_gp_idx] = length_gps_for_est[len_gp_idx].len.min()
         gp_max_lens[mode1_copynum - 1][len_gp_idx] = length_gps_for_est[len_gp_idx].len.max()
         gp_max_depths[mode1_copynum - 1][len_gp_idx] = length_gps_for_est[len_gp_idx].mean_kmer_depth.max()
         gp_max_depth_in_est[mode1_copynum - 1][len_gp_idx] = depth_max_pctl
         gp_max_depth_pctl_rank_in_est[mode1_copynum - 1][len_gp_idx] = depth_max_pctl_rank
-        
+
         min_density_depth_idx_1 = 0
         # hopefully universally effective heuristic to avoid inappropriately applying to very narrow depth distributions
         # location of min., if any, between error distribution and mode not likely to be lower than this; and if it is, hopefully little harm done being off by < 1
@@ -198,14 +198,14 @@ for mode1_copynum in [1, 2]:
             mode /= float(mode1_copynum) # for consistency: let it represent c#1
         else:
             mode_idx = val_to_grid_idx(mode * mode1_copynum, grid_min, kde_grid_density)
-        
+
         # condition mostly to exclude cases without perceptible error distribution, i.e. most cases, except small genomes
         if min_density_depth_idx_1 > 0 and np.mean(density[:min_density_depth_idx_1]) > density[min_density_depth_idx_1]:
             depths = depths[min_density_depth_idx_1:]
 
         # TODO: Remove preceding blank line
         depths = depths[depths <= depth_max_pctl]
-        
+
         # Estimate standard deviation of copy-number 1 sequences
         # Under assumption that 1st peak represents copy-number 2 sequences, more accurate to estimate from c#2 sequences because density of c#1 is likely to be low at c#2 mean, but not vice versa
         sigma = np.std(get_approx_component_obs(depths, mode * mode1_copynum, mode, depths[0])) / mode1_copynum
@@ -223,7 +223,7 @@ for mode1_copynum in [1, 2]:
                 component_weights[1] = max(0, get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) - (mode_component_wt * stats.norm.pdf(mode, 2*mode, 2*sigma)))
             if component_weights[1] == 0:
                 smallest_copynum = 2
-        
+
         i = mode1_copynum
         while (i+1) * mode < depths[-1]:
             adjacent = 2 # Another heuristic: assume density of preceding and following components equal at current mode (mean)
@@ -234,10 +234,10 @@ for mode1_copynum in [1, 2]:
             if density_next_mode > 0.5:
                 i += 1
                 curr_denominator = i * sigma_sqrt_2pi
-                component_weights.append(curr_denominator * density_next_mode) 
+                component_weights.append(curr_denominator * density_next_mode)
             else:
                 break
-        
+
         params = Parameters()
         components = [None]
         dummy = ConstantModel(prefix='dummy_')
@@ -261,7 +261,7 @@ for mode1_copynum in [1, 2]:
                     params[model.prefix + 'center'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'center')
                     params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
                 params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT)
-        
+
         j = i + 1
         if j * mode < depths[-1]:
             curr_mode = j * mode
@@ -293,7 +293,7 @@ for mode1_copynum in [1, 2]:
                 params.update(gamma_weight_model.make_params())
                 copynum_components = copynum_components + gamma_weight_model * gamma_model
                 weight_expr += ' + ' + gamma_weight + 'c'
-        
+
         genome_scale_model = ConstantModel(prefix='genomescale_')
         params.update(genome_scale_model.make_params(c=depths.size))
         mixture_model = genome_scale_model * copynum_components
@@ -303,7 +303,7 @@ for mode1_copynum in [1, 2]:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
         else: # TODO: Try to specify better
             params.add('weight', value=1.0, vary=False, expr=weight_expr)
-        
+
         step = (depths[-1] - depths[0]) / m.floor(depths.size * 1.0 / 100) # heuristic n...
         lb_pts = np.arange(m.floor(depths[0]), m.ceil(depths[0]), step)
         if lb_pts.size > 0:
@@ -311,13 +311,13 @@ for mode1_copynum in [1, 2]:
             lb = lb_pts[diffs >= 0][diffs[diffs >= 0].argmin()]
         else:
             lb = depths[0]
-        
+
         # TODO: Rm preceding blank line
         ub = lb + step * m.ceil((depths[-1] - lb) / step)
-        
+
         lmfit_range = np.arange(lb, ub, step)
         result = mixture_model.fit(np.histogram(depths, lmfit_range)[0], params, x=lmfit_range[1:])
-        
+
         # Set mode the first time, i.e. from estimation and classification of longest sequences
         if mode_max == np.inf:
             mode = result.params[components[smallest_copynum].prefix + 'center'].value / smallest_copynum
@@ -326,14 +326,14 @@ for mode1_copynum in [1, 2]:
 
         # TODO: Delete blank line
         sigma_min = result.params[components[smallest_copynum].prefix + 'sigma'].value / smallest_copynum
-        
+
         if smallest_copynum > 1:
             copynum_depth_lbs[mode1_copynum - 1][len_gp_idx].append(None)
             copynum_depth_maxs[mode1_copynum - 1][len_gp_idx].append(None)
             copynum_wts[mode1_copynum - 1][len_gp_idx].append(None)
             copynum_means[mode1_copynum - 1][len_gp_idx].append(None)
             copynum_stdevs[mode1_copynum - 1][len_gp_idx].append(None)
-        
+
         gp_len_condition = (seqs.len >= gp_min_lens[mode1_copynum - 1][len_gp_idx]) & (seqs.len <= gp_max_lens[mode1_copynum - 1][len_gp_idx])
         seqs.loc[gp_len_condition, 'modex'] = seqs[gp_len_condition].mean_kmer_depth / mode
         seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx + 1
@@ -395,7 +395,7 @@ for mode1_copynum in [1, 2]:
             lb = ub
 
         seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb), 'likeliest_copynum'] = len(components) - 1
-        
+
         # TODO: Delete blank line after conditional
         debug_file.write('')
         print('')
@@ -403,14 +403,14 @@ for mode1_copynum in [1, 2]:
             wt_next = result.params[components[smallest_copynum].prefix + 'amplitude'].value
             mean_next = result.params[components[smallest_copynum].prefix + 'center'].value
             sigma_next = result.params[components[smallest_copynum].prefix + 'sigma'].value
-        
+
         ub = np.inf
         copynum_depth_lbs[mode1_copynum - 1][len_gp_idx].append(lb)
         copynum_depth_maxs[mode1_copynum - 1][len_gp_idx].append(ub)
         copynum_wts[mode1_copynum - 1][len_gp_idx].append(wt_next)
         copynum_means[mode1_copynum - 1][len_gp_idx].append(mean_next)
         copynum_stdevs[mode1_copynum - 1][len_gp_idx].append(sigma_next)
-        
+
         log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx + 1) + ' out of ' + str(length_gps_count) + ' estimated\n')
         log_file.write('Group minimum and maximum lengths: ' + str(gp_min_lens[mode1_copynum - 1][len_gp_idx]) + ', ' + str(gp_max_lens[mode1_copynum - 1][len_gp_idx]) + '\n')
         log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(gp_max_depths[mode1_copynum - 1][len_gp_idx]) + '. ')
@@ -466,7 +466,7 @@ for mode1_copynum in [1, 2]:
 #    min_depth_for_classification = grid_idx_to_val(np.argmin(density[density_diffs_len:density_argmax]), kde_grid_density, offset_for_inverse)
 #    component_obs = curr_gp[(curr_gp.mean_kmer_depth >= min_depth_for_classification) and (curr_gp.mean_kmer_depth < 1.5 * mode)]
 #    component_obs_count = len(curr_gp[(curr_gp.mean_kmer_depth >= min_depth_for_classification) and (curr_gp.mean_kmer_depth < 1.5 * mode)])
-# 
+#
 #components_to_estimate = 1
 #current_std = component_obs.mean_kmer_depth.describe()['std']
 #current_gaussian = stats.norm(mode, current_std)
