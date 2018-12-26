@@ -247,11 +247,10 @@ for mode1_copynum in [1, 2]:
                 adjacent = 1
             adjacent_density = adjacent * component_weights[i] * stats.norm.pdf((i+1) * mode, i * mode, i * sigma)
             density_next_mode = max(0, get_density_for_idx(val_to_grid_idx((i+1) * mode, grid_min, kde_grid_density), density) - adjacent_density)
-            if density_next_mode > 0.5:
-                i += 1
-                curr_denominator = i * sigma_sqrt_2pi
-                component_weights.append(curr_denominator * density_next_mode)
-            else:
+            i += 1
+            curr_denominator = i * sigma_sqrt_2pi
+            component_weights.append(curr_denominator * density_next_mode)
+            if density_next_mode <= 0.5:
                 break
 
         params = Parameters()
