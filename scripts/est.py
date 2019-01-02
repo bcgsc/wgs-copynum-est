@@ -173,8 +173,7 @@ for mode1_copynum in [1, 2]:
         if depths[0] + 1 < np.percentile(depths, 10):
             soft_lb_idx = int(val_to_grid_idx(depths[0] + 1, grid_min, kde_grid_density))
             min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:int(val_to_grid_idx(np.percentile(depths, 20), grid_min, kde_grid_density))])
-
-        # confusing variable names follow: mode (soon) represents cp#1, while mode_idx represents the index at which maximum density occurs, whether cp#1 or 2
+        
         if np.isnan(mode):
             mode_idx = min_density_depth_idx_1 + np.argmax(density[min_density_depth_idx_1:(len(density))])
             mode = grid_idx_to_val(mode_idx, kde_grid_density, grid_min)
@@ -193,23 +192,9 @@ for mode1_copynum in [1, 2]:
         # Under assumption that 1st peak represents copy-number 2 sequences, more accurate to estimate from c#2 sequences because density of c#1 is likely to be low at c#2 mean, but not vice versa
         sigma = np.std(get_approx_component_obs(depths, mode * mode1_copynum, mode, depths[0])) / mode1_copynum
         sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
-        component_weights = [np.nan] * mode1_copynum
-        mode_density = get_density_for_idx(mode_idx, density)
-        semiweighted_density = stats.norm.pdf(mode * mode1_copynum, mode * mode1_copynum, sigma * mode1_copynum)
-        if mode1_copynum == 2:
-            if mode >= depths[0]:
-                unweighted = stats.norm.pdf(mode * mode1_copynum, mode, sigma)
-                semiweighted_density += (get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) * unweighted / mode_density)
-            if 3 * mode <= depths[-1]:
-                unweighted = stats.norm.pdf(mode * mode1_copynum, 3 * mode, 3 * sigma)
-                semiweighted_density += (get_density_for_idx(val_to_grid_idx(3 * mode, grid_min, kde_grid_density), density) * unweighted / mode_density)
-            else:
-                if 2 * mode <= depths[-1]:
-                    unweighted = stats.norm.pdf(mode, 2 * mode, 2 * sigma)
-                    semiweighted_density += (get_density_for_idx(val_to_grid_idx(2 * mode, grid_min, kde_grid_density), density) * unweighted / mode_density)
-
-        # TODO: Delete preceding blank line
-        mode_component_wt = mode_density / semiweighted_density
+        component_weights = [np.nan] * mode1_copynum 
+        curr_denominator = mode1_copynum * sigma_sqrt_2pi
+        mode_component_wt = curr_denominator * get_density_for_idx(mode_idx, density)
         component_weights.append(mode_component_wt)
         del mode_idx
         smallest_copynum = 1
