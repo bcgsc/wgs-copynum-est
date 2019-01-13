@@ -295,8 +295,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
         else:
             lb = depths[0]
 
-        # TODO: Rm preceding blank line
-        ub = lb + step * m.ceil((depths[-1] - lb) / step)
+        # TODO: rm blank line
+        ub = lb + step * (1 + m.ceil((depths[-1] - lb) / step))
 
         lmfit_range = np.arange(lb, ub, step)
         result = mixture_model.fit(np.histogram(depths, lmfit_range)[0], params, x=lmfit_range[1:])
