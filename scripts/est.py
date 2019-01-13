@@ -133,9 +133,6 @@ copynum_stats = [None]
 
 # Fit under assumption that first peak corresponds to mode of copy-number 1 or 2 (unique homozygous) sequences
 mode_error = 0.05
-mode1_copynums = [1, 2]
-if length_gps_count > 3:
-    mode1_copynums.extend([3, 4])
 
 for longest_seqs_mode1_copynum in [1, 2]:
     log_file = open(OUTPUT_DIR + '/log' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
