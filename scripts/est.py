@@ -228,14 +228,12 @@ for longest_seqs_mode1_copynum in [1, 2]:
         dummy.set_param_hint('c', value=0, vary=False)
         params.update(dummy.make_params())
         copynum_components = dummy
-        weight_expr = '0'
         smallest_prefix = None
         for j in range(1, i+1):
             model = init_gaussian(j, component_weights)
             components.append(model)
             if model is not None:
                 copynum_components = copynum_components + model
-                weight_expr += ' + ' + model.prefix + 'amplitude'
                 params.update(model.make_params())
                 if j == smallest_copynum:
                     params[model.prefix + 'center'].set(value = mode * smallest_copynum, min = mode_min * smallest_copynum, max = mode_max * smallest_copynum)
@@ -244,7 +242,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
                 else:
                     params[model.prefix + 'center'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'center')
                     params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
-                params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT)
+                params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
 
         j = i + 1
         if j * mode < depths[-1]:
@@ -273,10 +271,9 @@ for longest_seqs_mode1_copynum in [1, 2]:
                 params['gamma_loc'].set(expr = 'gamma_mean_constraint - (gamma_shape * gamma_scale)')
                 gamma_weight = 'gamma_wt_'
                 gamma_weight_model = ConstantModel(prefix=gamma_weight)
-                gamma_weight_model.set_param_hint('c', value = max(component_weights[i], (pre + post) * 1.0 / depths.size), min=NONNEG_CONSTANT)
+                gamma_weight_model.set_param_hint('c', value = max(component_weights[max_gaussian_copynums], (pre + post) * 1.0 / depths.size), min=NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
                 params.update(gamma_weight_model.make_params())
                 copynum_components = copynum_components + gamma_weight_model * gamma_model
-                weight_expr += ' + ' + gamma_weight + 'c'
 
         genome_scale_model = ConstantModel(prefix='genomescale_')
         params.update(genome_scale_model.make_params(c=depths.size))
@@ -286,8 +283,12 @@ for longest_seqs_mode1_copynum in [1, 2]:
         len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_copynum_est'] = len(components) - 1
         if len(components) - 1 == smallest_copynum:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
-        else: # TODO: Try to specify better
-            params.add('weight', value=1.0, vary=False, expr=weight_expr)
+        else:
+            wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[-2:0:-1]))
+            if len(components) - max_gaussian_copynums == 1:
+                params[components[-1].prefix + 'amplitude'].set(expr = wt_expr, min = 0, max = 1)
+            else:
+                params['gamma_wt_c'].set(expr = wt_expr, min = 0, max = 1)
 
         step = (depths[-1] - depths[0]) / m.floor(depths.size * 1.0 / 100) # heuristic n...
         lb_pts = np.arange(m.floor(depths[0]), m.ceil(depths[0]), step)
