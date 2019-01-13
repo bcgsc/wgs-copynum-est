@@ -126,9 +126,7 @@ len_percentiles_uniq = np.unique(np.percentile(seqs.len.values, np.arange(quanti
 length_gps_for_est = get_length_gps_for_est(seqs, len_percentiles_uniq, BIN_MINSIZE)
 length_gps_count = len(length_gps_for_est)
 
-#len_gp_stats = []
-#len_gp_stats.append(pd.DataFrame(columns=['ID', 'len', 'mean_kmer_depth', 'modex', 'gc', 'est_gp', 'likeliest_copynum']))
-LEN_GP_STATS_COLS = ['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'copynums']
+LEN_GP_STATS_COLS = ['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'min_copynum', 'max_copynum_est']
 len_gp_stats = [None]
 COPYNUM_STATS_COLS = ['len_gp_id', 'len_gp_min_len', 'len_gp_max_len', 'copynum', 'depth_lb', 'depth_max', 'weight', 'depth_mean', 'depth_stdev']
 copynum_stats = [None]
@@ -139,10 +137,10 @@ mode1_copynums = [1, 2]
 if length_gps_count > 3:
     mode1_copynums.extend([3, 4])
 
-for mode1_copynum in mode1_copynums:
-    log_file = open(OUTPUT_DIR + '/log' + str(mode1_copynum) + '.txt', 'w', newline='')
+for longest_seqs_mode1_copynum in [1, 2]:
+    log_file = open(OUTPUT_DIR + '/log' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
     # TODO: Rm debug file
-    debug_file = open(OUTPUT_DIR + '/debug' + str(mode1_copynum) + '.txt', 'w', newline='')
+    debug_file = open(OUTPUT_DIR + '/debug' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
     len_gp_stats.append(pd.DataFrame(data=None, index=pd.RangeIndex(stop=length_gps_count), columns=LEN_GP_STATS_COLS))
     copynum_stats_hash = { col: [] for col in COPYNUM_STATS_COLS }
 
@@ -165,25 +163,19 @@ for mode1_copynum in mode1_copynums:
         kde_grid = np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, grid_min, kde_grid_density) + 1)
         density = kde.evaluate(kde_grid)
 
-        len_gp_stats[mode1_copynum].loc[len_gp_idx, 'min_len'] = length_gps_for_est[len_gp_idx].len.min()
-        len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_len'] = length_gps_for_est[len_gp_idx].len.max()
-        len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_depth'] = length_gps_for_est[len_gp_idx].mean_kmer_depth.max()
-        len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_depth_in_est'] = depth_max_pctl
-        len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_depth_pctl_rank_in_est'] = depth_max_pctl_rank
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'min_len'] = length_gps_for_est[len_gp_idx].len.min()
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_len'] = length_gps_for_est[len_gp_idx].len.max()
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_depth'] = length_gps_for_est[len_gp_idx].mean_kmer_depth.max()
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_depth_in_est'] = depth_max_pctl
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_depth_pctl_rank_in_est'] = depth_max_pctl_rank
+        curr_len_gp_stats = len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx]
 
         min_density_depth_idx_1 = 0
         # hopefully universally effective heuristic to avoid inappropriately applying to very narrow depth distributions
         # location of min., if any, between error distribution and mode not likely to be lower than this; and if it is, hopefully little harm done being off by < 1
         if depths[0] + 1 < np.percentile(depths, 10):
-            soft_lb_idx = int(val_to_grid_idx(depths[0] + 1, grid_min, kde_grid_density))
-            min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:int(val_to_grid_idx(np.percentile(depths, 20), grid_min, kde_grid_density))])
-
-        if np.isnan(mode):
-            mode_idx = min_density_depth_idx_1 + np.argmax(density[min_density_depth_idx_1:(len(density))])
-            mode = grid_idx_to_val(mode_idx, kde_grid_density, grid_min)
-            mode /= float(mode1_copynum) # for consistency: let it represent c#1
-        else:
-            mode_idx = val_to_grid_idx(mode * mode1_copynum, grid_min, kde_grid_density)
+            soft_lb_idx = m.ceil(val_to_grid_idx(depths[0] + 1, grid_min, kde_grid_density))
+            min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:m.floor(val_to_grid_idx(np.percentile(depths, 20), grid_min, kde_grid_density))])
 
         # condition mostly to exclude cases without perceptible error distribution, i.e. most cases, except small genomes
         if min_density_depth_idx_1 > 0 and np.mean(density[:min_density_depth_idx_1]) > density[min_density_depth_idx_1]:
@@ -191,6 +183,12 @@ for mode1_copynum in mode1_copynums:
 
         # TODO: Remove preceding blank line
         depths = depths[depths <= depth_max_pctl]
+
+        mode_idx = min_density_depth_idx_1 + np.argmax(density[min_density_depth_idx_1:])
+        len_group_mode = grid_idx_to_val(mode_idx, kde_grid_density, grid_min)
+        if np.isnan(mode):
+            mode = len_group_mode
+            mode /= float(longest_seqs_mode1_copynum) # for consistency: let it represent c#1
 
         # Estimate standard deviation of copy-number 1 sequences
         # Under assumption that 1st peak represents copy-number 2 sequences, more accurate to estimate from c#2 sequences because density of c#1 is likely to be low at c#2 mean, but not vice versa
@@ -284,8 +282,9 @@ for mode1_copynum in mode1_copynums:
         params.update(genome_scale_model.make_params(c=depths.size))
         mixture_model = genome_scale_model * copynum_components
 
-        len_gp_stats[mode1_copynum].loc[len_gp_idx, 'copynums'] = len(components) - components.count(None)
-        if len_gp_stats[mode1_copynum].loc[len_gp_idx, 'copynums'] == 1:
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_copynum_est'] = len(components) - 1
+        if len(components) - 1 == smallest_copynum:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
         else: # TODO: Try to specify better
             params.add('weight', value=1.0, vary=False, expr=weight_expr)
@@ -404,20 +403,19 @@ for mode1_copynum in mode1_copynums:
     debug_file.close()
 
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
-
-    seq_label_filename = OUTPUT_DIR + '/sequence-labels-' + str(mode1_copynum) + '.csv'
+    seq_label_filename = OUTPUT_DIR + '/sequence-labels-' + str(longest_seqs_mode1_copynum) + '.csv'
     seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
 
-LEN_GP_STATS_OUTPUT_COLS = tuple(['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'copynums'])
-LEN_GP_STATS_OUTPUT_HEADER = ['Min. len.', 'Max. len.', 'Max. depth', 'Max. depth in estimation', '# components']
-for mode1_copynum in [1, 2]:
-    filename = OUTPUT_DIR + '/length_gp_stats_' + str(mode1_copynum) + '.csv'
-    len_gp_stats[mode1_copynum].to_csv(filename, columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
+LEN_GP_STATS_OUTPUT_COLS = tuple(['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'min_copynum', 'max_copynum_est'])
+LEN_GP_STATS_OUTPUT_HEADER = ['Min. len.', 'Max. len.', 'Max. depth', 'Max. depth in estimation', 'Smallest diploid copy # present', 'Largest diploid copy # estimated']
+for longest_seqs_mode1_copynum in [1, 2]:
+    filename = OUTPUT_DIR + '/length_gp_stats_' + str(longest_seqs_mode1_copynum) + '.csv'
+    len_gp_stats[longest_seqs_mode1_copynum].to_csv(filename, columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
 
 COPYNUM_STATS_OUTPUT_HEADER = ['Group #', 'Group min. len.', 'Group max. len.', 'Component #', 'Component depth lower bound', 'Component max. depth', 'Weight', 'Mean', 'Std. deviation']
-for mode1_copynum in [1, 2]:
-    filename = OUTPUT_DIR + '/copynumber_params_' + str(mode1_copynum) + '.csv'
-    copynum_stats[mode1_copynum].to_csv(filename, header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
+for longest_seqs_mode1_copynum in [1, 2]:
+    filename = OUTPUT_DIR + '/copynumber_params_' + str(longest_seqs_mode1_copynum) + '.csv'
+    copynum_stats[longest_seqs_mode1_copynum].to_csv(filename, header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
 
 
 #expected_depth_idx = 1 + (expected_kmer_depth - depths[0] + offset) * kde_grid_density
