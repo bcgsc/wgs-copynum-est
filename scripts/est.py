@@ -217,33 +217,76 @@ for longest_seqs_mode1_copynum in [1, 2]:
 
         # TODO: rm blank line
         sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
-        component_weights = [np.nan] * mode1_copynum
-        curr_denominator = mode1_copynum * sigma_sqrt_2pi
-        mode_component_wt = curr_denominator * get_density_for_idx(mode_idx, density)
-        component_weights.append(mode_component_wt)
-        del mode_idx
-        smallest_copynum = 1
-        if mode1_copynum == 2:
-            if mode < depths[0]:
-                component_weights[1] = 0
-            else:
-                diff = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) - (mode_component_wt * stats.norm.pdf(mode, 2*mode, 2*sigma))
-                component_weights[1] = max(0, diff * sigma_sqrt_2pi)
-            if component_weights[1] == 0:
-                smallest_copynum = 2
+        sigma_sqrt_2pi_reciprocal = 1 / sigma_sqrt_2pi
 
-        i = mode1_copynum
-        while (i+1) * mode < depths[-1]:
-            adjacent = 2 # Another heuristic: assume density of preceding and following components equal at current mode (mean)
-            if (i+2) * mode >= depths[-1]:
-                adjacent = 1
-            adjacent_density = adjacent * component_weights[i] * stats.norm.pdf((i+1) * mode, i * mode, i * sigma)
-            density_next_mode = max(0, get_density_for_idx(val_to_grid_idx((i+1) * mode, grid_min, kde_grid_density), density) - adjacent_density)
-            i += 1
-            curr_denominator = i * sigma_sqrt_2pi
-            component_weights.append(curr_denominator * density_next_mode)
-            if density_next_mode <= 0.5:
+        # Estimate copy-number component weights starting at means of cp#s 1 & 2, using heuristic of 2x cp#1 density at cp#2 mean
+        component_weights = [np.nan] * (2 + int(depths[-1] > mode * 2))
+        if len(component_weights) < 3:
+            component_weights[1] = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) * sigma_sqrt_2pi
+        elif mode <= depths[0]:
+            component_weights[1] = 0
+            # likely slight overestimate if length group has copy-number 3 sequences
+            component_weights[2] = get_density_for_idx(val_to_grid_idx(2 * mode, grid_min, kde_grid_density), density) * 2 * sigma_sqrt_2pi
+        else:
+            cpnum_density_2at1 = 0.5 * sigma_sqrt_2pi_reciprocal * stats.norm.pdf(mode, 2*mode, 2*sigma)
+            cpnum_density_1at2 = sigma_sqrt_2pi_reciprocal * stats.norm.pdf(2*mode, mode, sigma)
+            cpnum_densities_j_at_i = np.array([[sigma_sqrt_2pi_reciprocal, cpnum_density_2at1], [2 * cpnum_density_1at2, 0.5 * sigma_sqrt_2pi_reciprocal]])
+            density_obs_at_mean1 = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density)
+            density_obs_at_mean2 = get_density_for_idx(val_to_grid_idx(mode*2, grid_min, kde_grid_density), density)
+            component_weights[1], component_weights[2] = np.linalg.solve(cpnum_densities_j_at_i, np.array([density_obs_at_mean1, density_obs_at_mean2]))
+
+        smallest_copynum = 1
+        if component_weights[1] == 0:
+            if component_weights[2] == 0:
+                error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
+                error_msg += 'none are single-copy (either homo- or heterozygous)!'
+                raise RuntimeError(error_msg)
+            smallest_copynum = 2
+
+        # Estimate weights for remaining, higher copy numbers
+        hetero_to_homozg_maxdens = 1
+        if len(component_weights) > 2:
+            if component_weights[1] == 0:
+                hetero_to_homozg_maxdens += 1
+            else:
+                start = m.ceil(val_to_grid_idx(max(depths[0], (1 - mode_error) * mode), grid_min, kde_grid_density))
+                end = m.ceil(val_to_grid_idx(min(depths[-1], (1 + mode_error) * 2 * mode), grid_min, kde_grid_density))
+                maxdens = grid_idx_to_val(start + np.argmax(density[start:end]), kde_grid_density, grid_min)
+                ratio = maxdens / mode
+                if (ratio >= 2 * (1 - mode_error)) and (ratio <= 2 * (1 + mode_error)):
+                    hetero_to_homozg_maxdens += 1
+                elif (ratio > 1 + mode_error) and (ratio < 2 * (1 - mode_error)):
+                    hetero_to_homozg_maxdens = ratio
+
+        i = 2
+        while (i + 1) * mode < depths[-1]:
+            adjacent = 1
+            if (i + 2) * mode < depths[-1]:
+                adjacent = 2 # Another heuristic: assume density of preceding and following components equal at current mode (mean)
+            adjacent_density = adjacent * component_weights[i] * stats.norm.pdf((i + 1) * mode, i * mode, i * sigma)
+            density_next_mode = max(0, get_density_for_idx(val_to_grid_idx((i + 1) * mode, grid_min, kde_grid_density), density) - adjacent_density)
+            if density_next_mode == 0:
                 break
+            component_weights.append((i + 1) * sigma_sqrt_2pi * density_next_mode)
+            next_eval_pt = (i + 1 + (int(adjacent == 2) * (hetero_to_homozg_maxdens - 1))) * mode
+            if adjacent == 1:
+                i += int(density_next_mode > 0.5)
+                break
+            else:
+                next_adjacent_density = (1 + int((i+3) * mode < depths[-1])) * component_weights[i+1] * stats.norm.pdf((i+2) * mode, (i+1) * mode, (i+1) * sigma)
+                density_following_mode = max(0, get_density_for_idx(val_to_grid_idx((i + 2) * mode, grid_min, kde_grid_density), density) - next_adjacent_density)
+                weight_following = (i + 2) * sigma_sqrt_2pi * density_following_mode
+                cpnum_dens = component_weights[i-1] * sigma_sqrt_2pi_reciprocal * stats.norm.pdf(next_eval_pt, (i - 1) * mode, (i - 1) * sigma) / (i - 1)
+                cpnum_dens += component_weights[i] * sigma_sqrt_2pi_reciprocal * stats.norm.pdf(next_eval_pt, i * mode, i * sigma) / i
+                next_obs_dens = get_density_for_idx(val_to_grid_idx(next_eval_pt, grid_min, kde_grid_density), density)
+                if next_obs_dens - (2 * cpnum_dens) >= (5.0 / 12) * next_obs_dens:
+                    component_weights.append(weight_following)
+                    i += 2
+                else:
+                    break
+
+        # TODO: rm blank line
+        max_gaussian_copynums = max(1, int(depths[-1] > mode * 2) * i)
 
         params = Parameters()
         components = [None]
@@ -252,7 +295,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         params.update(dummy.make_params())
         copynum_components = dummy
         smallest_prefix = None
-        for j in range(1, i+1):
+        for j in range(1, max_gaussian_copynums + 1):
             model = init_gaussian(j, component_weights)
             components.append(model)
             if model is not None:
@@ -267,14 +310,14 @@ for longest_seqs_mode1_copynum in [1, 2]:
                     params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
                 params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
 
-        j = i + 1
+        j = max_gaussian_copynums + 1
         if j * mode < depths[-1]:
             curr_mode = j * mode
             tail_stats = stats.describe(depths[depths > curr_mode])
             tail_mean_density = get_density_for_idx(val_to_grid_idx(tail_stats.mean, grid_min, kde_grid_density), density)
-            est_components_left = (depths[-1] - (i + 0.5) * mode) / mode
-            tail_fat_enough = (est_components_left >= 100) or (np.percentile(depths, 100 - est_components_left) > (i + 0.5) * mode)
-            if tail_fat_enough and (tail_mean_density >= 3 * component_weights[i] * stats.norm.pdf(tail_stats.mean, i * mode, i * sigma)):
+            est_components_left = max(0, (depths[-1] - (max_gaussian_copynums + 0.5) * mode) / mode)
+            tail_fat_enough = (est_components_left >= 100) or ((est_components_left >= 4) and np.percentile(depths, 100 - est_components_left) > (max_gaussian_copynums + 0.5) * mode)
+            if tail_fat_enough and (tail_mean_density >= 3 * component_weights[i] * stats.norm.pdf(tail_stats.mean, max_gaussian_copynums * mode, max_gaussian_copynums * sigma)):
                 gamma_model = Model(gamma, prefix='gamma_')
                 components.append(gamma_model)
                 # rough guesses (likely overestimates) for starting parameter values
@@ -307,12 +350,13 @@ for longest_seqs_mode1_copynum in [1, 2]:
         if len(components) - 1 == smallest_copynum:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
         else:
-            wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[-2:0:-1]))
+            wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[-2:(smallest_copynum - 1):-1]))
             if len(components) - max_gaussian_copynums == 1:
                 params[components[-1].prefix + 'amplitude'].set(expr = wt_expr, min = 0, max = 1)
             else:
                 params['gamma_wt_c'].set(expr = wt_expr, min = 0, max = 1)
 
+        # Finally estimate copy numbers using lmfit
         step = (depths[-1] - depths[0]) / m.floor(depths.size * 1.0 / 100) # heuristic n...
         lb_pts = np.arange(m.floor(depths[0]), m.ceil(depths[0]), step)
         if lb_pts.size > 0:
@@ -332,100 +376,89 @@ for longest_seqs_mode1_copynum in [1, 2]:
             mode = result.params[components[smallest_copynum].prefix + 'center'].value / smallest_copynum
             mode_min = (1 - mode_error) * mode
             mode_max = (1 + mode_error) * mode
+        sigma_min = (result.params[components[smallest_copynum].prefix + 'sigma'].value - result.params[components[smallest_copynum].prefix + 'sigma'].stderr) / smallest_copynum
+        length_gp_sigmas[longest_seqs_mode1_copynum][len_gp_idx] = result.params[components[smallest_copynum].prefix + 'sigma'].value
 
-        # TODO: Delete blank line
-        sigma_min = result.params[components[smallest_copynum].prefix + 'sigma'].value / smallest_copynum
-
-        if smallest_copynum > 1:
-            for k in range(1, smallest_copynum):
-                copynum_stats_data = [len_gp_idx, len_gp_stats[mode1_copynum].loc[len_gp_idx, 'min_len'], len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_len'], k]
-                copynum_stats_data.extend([None] * 5)
-                add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
-
-        gp_len_condition = (seqs.len >= len_gp_stats[mode1_copynum].loc[len_gp_idx, 'min_len']) & (seqs.len <= len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_len'])
+        # Compute likeliest copy number assignments
+        gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
         seqs.loc[gp_len_condition, 'modex'] = seqs[gp_len_condition].mean_kmer_depth / mode
         seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx + 1
         lb, ub = 0, np.inf
         ubs = ['N/A'] * (smallest_copynum - 1)
-        mean_next = None
-        for idx in range(smallest_copynum, len(components) - 1):
-            prefix_i = components[idx].prefix
-            prefix_next = components[idx+1].prefix
+        wt_iplus1, mean_iplus1, sigma_iplus1 = 0, 0, 0
+        if components[1] is not None:
+            wt_iplus1 = result.params[components[1].prefix + 'amplitude']
+            mean_iplus1, sigma_iplus1 = result.params[components[1].prefix + 'center'], result.params[components[1].prefix + 'sigma']
+        if len(components) > 2:
+            wt_iplus2 = result.params[components[2].prefix + 'amplitude']
+            mean_iplus2, sigma_iplus2 = result.params[components[2].prefix + 'center'], result.params[components[2].prefix + 'sigma']
+        for idx in range(2, len(components) - 1, 2):
+            wt_prev = 0
+            if components[idx-1] is not None:
+                prefix_prev = components[idx-1].prefix
+                wt_prev = result.params[prefix_prev + 'amplitude'].value
+                mean_prev, sigma_prev = result.params[prefix_prev + 'center'].value, result.params[prefix_prev + 'sigma'].value
+            prefix_i, prefix_iplus1 = components[idx].prefix, components[idx+1].prefix
             wt_i = result.params[prefix_i + 'amplitude'].value
-            mean_i = result.params[prefix_i + 'center'].value
-            sigma_i = result.params[prefix_i + 'sigma'].value
-            #x = Symbol('x', real=True)
-            #x = Symbol('x')
-            if re.match('gauss', prefix_next):
-                print('Next Gauss')
-                wt_next = result.params[prefix_next + 'amplitude'].value
-                mean_next = result.params[prefix_next + 'center'].value
-                sigma_next = result.params[prefix_next + 'sigma'].value
-                #ub = nsolve((wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2))), (idx + 0.5) * result.params['gauss1_center'].value)
-                def densities_diff(x):
-                    return (wt_i * (i + 1) / (wt_next * i)) - (m.e ** (-0.5 * (((mean_next - x) / sigma_next)**2 - ((x - mean_i) / sigma_i)**2)))
-                roots = optimize.root(densities_diff, (idx + 0.5) * result.params[prefix_i + 'center'].value)
-                debug_file.write('start: ' + str((idx + 0.5) * result.params[prefix_i + 'center'].value) + ', roots: ' + str(roots) + '\n')
-                #print('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value))
-                ub = roots.x[0]
+            mean_i, sigma_i = result.params[prefix_i + 'center'].value, result.params[prefix_i + 'sigma'].value
+            if re.match('gauss', prefix_iplus1):
+                wt_iplus1 = result.params[prefix_iplus1 + 'amplitude'].value
+                mean_iplus1, sigma_iplus1 = result.params[prefix_iplus1 + 'center'].value, result.params[prefix_iplus1 + 'sigma'].value
             else:
-                print('Next Gamma')
-                wt_next = result.params['gamma_wt_c'].value
-                shape = result.params[prefix_next + 'shape'].value
-                loc = result.params[prefix_next + 'loc'].value
-                scale = result.params[prefix_next + 'scale'].value
-                mean_next = shape * scale + loc
-                sigma_next = m.sqrt(shape * scale**2)
-                print(str(loc) + ', ' + str(shape) + ', ' + str(scale))
-                print(str(mean_next) + ', ' + str(sigma_next))
-                #print(str(gamma_fn(shape)))
-                #print()
-                #density_i = wt_i * (m.e ** (-0.5 * ((x - mean_i) / sigma_i)**2)) / (m.sqrt(2 * m.pi) * sigma_i)
-                #density_next = ((x - loc)**(shape - 1)) * (m.e ** ((loc - x) / scale)) / (gamma_fn(shape) * scale**shape)
-                #ub = nsolve(density_i - density_next, 0.5 * (mean_next + mean_i))
-                def densities_diff(x):
-                    density_i = wt_i * (m.e ** (-0.5 * ((x - mean_i) / sigma_i)**2)) / (m.sqrt(2 * m.pi) * sigma_i)
-                    density_next = ((x - loc)**(shape - 1)) * (m.e ** ((loc - x) / scale)) / (gamma_fn(shape) * scale**shape)
-                    return density_i - density_next
-                roots = optimize.root(densities_diff, 0.5 * (mean_next - scale + mean_i)) # mean of modes (gamma mode = mean - scale)
-                debug_file.write('start: ' + str(0.5 * (mean_next - scale + mean_i)) + 'roots: ' + str(roots) + '\n')
-                print('start: ' + str(0.5 * (mean_next - scale + mean_i)))
-                ub = roots.x[0]
-            debug_file.write('ub: ' + str(ub) + '\n')
+                wt_iplus1 = result.params['gamma_wt_c'].value
+                mean_iplus1, sigma_iplus1 = result.params['gamma_mean_constraint'].value, m.sqrt(result.params['gamma_var_constraint'].value)
+            if len(components) - idx > 2:
+                prefix_iplus2 = components[idx+2].prefix
+                wt_iplus2 = result.params[prefix_iplus2 + 'amplitude'].value
+                mean_iplus2, sigma_iplus2 = result.params[prefix_iplus2 + 'center'].value, result.params[prefix_iplus2 + 'sigma'].value
+            def densities_diff(x):
+                density_curr = wt_prev * stats.norm.pdf(x, mean_prev, sigma_prev) + wt_i * stats.norm.pdf(x, mean_i, sigma_i)
+                if len(components) - idx > 2:
+                    return wt_iplus1 * stats.norm.pdf(x, mean_iplus1, sigma_iplus1) + wt_iplus2 * stats.norm.pdf(x, mean_iplus2, sigma_iplus2) - density_curr
+                return wt_iplus1 * stats.norm.pdf(x, mean_iplus1, sigma_iplus1) - density_curr
+            roots = optimize.root(densities_diff, (idx + 1) * result.params[components[smallest_copynum].prefix + 'center'].value)
+            #debug_file.write('start: ' + str((idx + 0.5) * result.params[prefix_i + 'center'].value) + ', roots: ' + str(roots) + '\n')
+            #print('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value))
+            ub = roots.x[0]
+            #debug_file.write('ub: ' + str(ub) + '\n')
             #print('ub: ' + str(ub))
-            seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb) & (seqs.mean_kmer_depth <= ub), 'likeliest_copynum'] = idx
-
-            copynum_stats_data = [len_gp_idx, len_gp_stats[mode1_copynum].loc[len_gp_idx, 'min_len'], len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_len'], idx]
-            copynum_stats_data.extend([lb, ub, wt_i, mean_i, sigma_i])
+            haploid_copynum = idx / 2
+            seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb) & (seqs.mean_kmer_depth <= ub), 'likeliest_copynum'] = haploid_copynum
+            copynum_stats_data = [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_copynum]
+            wt_haploid_copynum = wt_prev + wt_i
+            wt_prev_normed, wt_i_normed = wt_prev/wt_haploid_copynum, wt_i/wt_haploid_copynum
+            mean_haploid_copynum = (wt_prev_normed * mean_prev) + (wt_i_normed * mean_i)
+            sigma_haploid_copynum = m.sqrt((wt_prev_normed * sigma_prev**2) + (wt_i_normed * sigma_i**2) + (wt_prev_normed * wt_i_normed * (mean_prev - mean_i)**2))
+            copynum_stats_data.extend([lb, ub, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum])
             add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
             ubs.append(ub)
             lb = ub
-
-        seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb), 'likeliest_copynum'] = len(components) - 1
-
-        # TODO: Delete blank line after conditional
-        debug_file.write('')
-        print('')
-        if mean_next is None:
-            wt_next = result.params[components[smallest_copynum].prefix + 'amplitude'].value
-            mean_next = result.params[components[smallest_copynum].prefix + 'center'].value
-            sigma_next = result.params[components[smallest_copynum].prefix + 'sigma'].value
-
         ub = np.inf
-        copynum_stats_data = [len_gp_idx, len_gp_stats[mode1_copynum].loc[len_gp_idx, 'min_len'], len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_len'], len(components) - 1]
-        copynum_stats_data.extend([lb, ub, wt_next, mean_next, sigma_next])
+        haploid_copynum = m.floor(len(components) / 2)
+        seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb), 'likeliest_copynum'] = haploid_copynum
+        copynum_stats_data = [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_copynum]
+        if len(components) % 2 == 0:
+            wt_last, mean_last, sigma_last = wt_iplus1, mean_iplus1, sigma_iplus1
+        else:
+            wt_last = wt_iplus1 + wt_iplus2
+            wt_iplus1_normed, wt_iplus2_normed = wt_iplus1/wt_last, wt_iplus2/wt_last
+            mean_last = (wt_iplus1_normed * mean_iplus1) + (wt_iplus2_normed * mean_iplus2)
+            sigma_last = m.sqrt((wt_iplus1_normed * sigma_iplus1**2) + (wt_iplus2_normed * sigma_iplus2**2) + (wt_iplus1_normed * wt_iplus2_normed * (mean_iplus2 - mean_iplus1)**2))
+        copynum_stats_data.extend([lb, ub, wt_last, mean_last, sigma_last])
         add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
 
-        log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx + 1) + ' out of ' + str(length_gps_count) + ' estimated\n')
-        log_file.write('Group minimum and maximum lengths: ' + str(len_gp_stats[mode1_copynum].loc[len_gp_idx, 'min_len']) + ', ' + str(len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_len']) + '\n')
-        log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(len_gp_stats[mode1_copynum].loc[len_gp_idx, 'max_depth']) + '. ')
-        log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n')
-        log_file.write(result.fit_report())
-        log_file.write('\n')
+    debug_file.write('')
+    print('')
+
+    log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
+    log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
+    log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(curr_len_gp_stats.max_depth) + '. ')
+    log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n')
+    log_file.write(result.fit_report())
+    log_file.write('\n')
 
     log_file.close()
     debug_file.close()
-
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
     seq_label_filename = OUTPUT_DIR + '/sequence-labels-' + str(longest_seqs_mode1_copynum) + '.csv'
     seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
