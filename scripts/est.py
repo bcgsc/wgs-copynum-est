@@ -82,6 +82,19 @@ def add_to_copynum_stats(data, cols, stats_hash):
     for i in range(len(data)):
         stats_hash[cols[i]].append(data[i])
 
+def variance_from_curve(len_group_mode, mode, longest_seqs_mode1_copynum, mode_error):
+    ratio = len_group_mode / mode
+    ret = (ratio >= (1 - mode_error) and ratio <= (1 + mode_error))
+    if longest_seqs_mode1_copynum == 2:
+        double_mode_error = 2 * mode_error
+        return (ret or (ratio >= (2 - double_mode_error) and ratio <= (2 + double_mode_error)))
+    return ret
+
+# Fit linearised exponential decay: sigma = A * exp(K * length_median) => log(sigma) = K * length_median + log(A)
+def guess_next_sigma(length_median, length_medians, sigmas):
+    K, log_A = np.polyfit(length_medians, np.log(sigmas), 1)
+    return m.exp(K * length_median + log_A)
+
 
 UNITIGS_FILE = sys.argv[1] # FASTA format
 KMER_LEN = int(sys.argv[2])
@@ -125,6 +138,8 @@ if quantile > 0.25:
 len_percentiles_uniq = np.unique(np.percentile(seqs.len.values, np.arange(quantile, 100, quantile), interpolation='higher'))
 length_gps_for_est = get_length_gps_for_est(seqs, len_percentiles_uniq, BIN_MINSIZE)
 length_gps_count = len(length_gps_for_est)
+length_gp_medians = list(map(lambda gp: gp.len.median(), length_gps_for_est))
+length_gp_sigmas = [None, [None] * length_gps_count, [None] * length_gps_count]
 
 LEN_GP_STATS_COLS = ['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'min_copynum', 'max_copynum_est']
 len_gp_stats = [None]
@@ -188,8 +203,19 @@ for longest_seqs_mode1_copynum in [1, 2]:
             mode /= float(longest_seqs_mode1_copynum) # for consistency: let it represent c#1
 
         # Estimate standard deviation of copy-number 1 sequences
-        # Under assumption that 1st peak represents copy-number 2 sequences, more accurate to estimate from c#2 sequences because density of c#1 is likely to be low at c#2 mean, but not vice versa
-        sigma = np.std(get_approx_component_obs(depths, mode * mode1_copynum, mode, depths[0])) / mode1_copynum
+        if variance_from_curve(len_group_mode, mode, longest_seqs_mode1_copynum, mode_error):
+            # If 1st peak represents c#2 sequences, likely more accurate to estimate from c#2 sequences because
+            # density of c#1 is likely to be lower at c#2 mean than density of c#2 at c#1 mean
+            mode1_copynum = round(len_group_mode / mode)
+            sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode, depths[0])) / mode1_copynum
+        else:
+            sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[longest_seqs_mode1_copynum][(len_gp_idx + 1):])
+
+        # TODO: rm blank line
+        if sigma < sigma_min:
+            sigma_min = NONNEG_CONSTANT
+
+        # TODO: rm blank line
         sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
         component_weights = [np.nan] * mode1_copynum
         curr_denominator = mode1_copynum * sigma_sqrt_2pi
