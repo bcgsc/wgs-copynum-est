@@ -310,6 +310,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
                     params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
                 params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
 
+        gamma_component_idx = None
         j = max_gaussian_copynums + 1
         if j * mode < depths[-1]:
             curr_mode = j * mode
@@ -340,6 +341,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
                 gamma_weight_model.set_param_hint('c', value = max(component_weights[max_gaussian_copynums], (pre + post) * 1.0 / depths.size), min=NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
                 params.update(gamma_weight_model.make_params())
                 copynum_components = copynum_components + gamma_weight_model * gamma_model
+                gamma_component_idx = j
 
         genome_scale_model = ConstantModel(prefix='genomescale_')
         params.update(genome_scale_model.make_params(c=depths.size))
@@ -351,7 +353,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
         else:
             wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[-2:(smallest_copynum - 1):-1]))
-            if len(components) - max_gaussian_copynums == 1:
+            if gamma_component_idx is None:
                 params[components[-1].prefix + 'amplitude'].set(expr = wt_expr, min = 0, max = 1)
             else:
                 params['gamma_wt_c'].set(expr = wt_expr, min = 0, max = 1)
