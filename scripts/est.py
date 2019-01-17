@@ -384,7 +384,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
         seqs.loc[gp_len_condition, 'modex'] = seqs[gp_len_condition].mean_kmer_depth / mode
         seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx + 1
         lb, ub = 0, np.inf
-        ubs = ['N/A'] * (smallest_copynum - 1)
         wt_iplus1, mean_iplus1, sigma_iplus1 = 0, 0, 0
         if components[1] is not None:
             wt_iplus1 = result.params[components[1].prefix + 'amplitude']
@@ -431,7 +430,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
             sigma_haploid_copynum = m.sqrt((wt_prev_normed * sigma_prev**2) + (wt_i_normed * sigma_i**2) + (wt_prev_normed * wt_i_normed * (mean_prev - mean_i)**2))
             copynum_stats_data.extend([lb, ub, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum])
             add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
-            ubs.append(ub)
             lb = ub
         ub = np.inf
         haploid_copynum = m.floor(len(components) / 2)
