@@ -110,7 +110,7 @@ $ mv <est_seq_labels> full
 
 4. Compute summary stats; repeat for the various groups (e.g. sequences shorter than 100bps, etc.)
 $ cd summary
-$ python <HOME>/scripts/results/process/compute-summary-stats.py <aln_est_counts> <aln_est_ranks> <counts> <counts_nb> <summary_stats> <summary_stats_nb>
+$ python <HOME>/scripts/results/process/compute-summary-stats.py <aln_est_counts> <counts> <counts_nb> <summary_stats> <summary_stats_nb>
 
 5. Create plots
 $ cd ..
