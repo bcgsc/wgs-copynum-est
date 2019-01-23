@@ -42,14 +42,14 @@ max_components_est = int(max(len_gp_est_component_counts))
 
 seqs = pd.read_csv(EST_OUTPUT)
 cols_from_to = { 'Length': 'length', 'Average k-mer depth': 'avg_depth', '1st Mode X': 'modex', 'GC %': 'GC', 'Estimation length group': 'len_gp', 'Likeliest copy #': 'copynum_est' }
-seqs.rename(index=str, columns=cols_from_to, inplace=True)
+seqs.rename(columns=cols_from_to, inplace=True)
 seqs.set_index('ID', inplace=True)
 seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[gp])
 
 seq_alns = pd.read_csv(BWA_PARSE_OUTPUT, delimiter='\t')
 seq_alns.drop('GC content', axis=1, inplace=True)
 cols_from_to = { 'Mapped': 'aln_mapped', 'Matches': 'aln_match_count', 'Others': 'aln_other_count', 'Other CIGARs': 'aln_other_cigars', 'MAPQ (unique match only)': 'aln_mapq' }
-seq_alns.rename(index=str, columns=cols_from_to, inplace=True)
+seq_alns.rename(columns=cols_from_to, inplace=True)
 seq_alns.set_index('ID', inplace=True)
 seq_alns['aln_match_count'] = seq_alns.aln_match_count.apply(lambda i: m.ceil(i/2.0))
 seqs = seqs.join(seq_alns)
