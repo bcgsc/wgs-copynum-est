@@ -1,4 +1,5 @@
 import csv
+import math as m
 import numpy as np
 import pandas as pd
 import sys
@@ -36,9 +37,8 @@ def count_and_write(max_components_est, seqs, cat=None):
     aln_est.to_csv('aln-est_counts.csv', header=header, index_label='Aln/Est')
 
 
-len_gp_est_component_counts = [0]
-len_gp_est_component_counts.extend(pd.read_csv(EST_LEN_GP_STATS)['# components'].tolist())
-max_components_est = max(len_gp_est_component_counts)
+len_gp_est_component_counts = pd.read_csv(EST_LEN_GP_STATS)['Largest diploid copy # estimated'].apply(lambda i: m.ceil(i/2.0)).tolist()
+max_components_est = int(max(len_gp_est_component_counts))
 
 seqs = pd.read_csv(EST_OUTPUT)
 cols_from_to = { 'Length': 'length', 'Average k-mer depth': 'avg_depth', '1st Mode X': 'modex', 'GC %': 'GC', 'Estimation length group': 'len_gp', 'Likeliest copy #': 'copynum_est' }
@@ -51,6 +51,7 @@ seq_alns.drop('GC content', axis=1, inplace=True)
 cols_from_to = { 'Mapped': 'aln_mapped', 'Matches': 'aln_match_count', 'Others': 'aln_other_count', 'Other CIGARs': 'aln_other_cigars', 'MAPQ (unique match only)': 'aln_mapq' }
 seq_alns.rename(index=str, columns=cols_from_to, inplace=True)
 seq_alns.set_index('ID', inplace=True)
+seq_alns['aln_match_count'] = seq_alns.aln_match_count.apply(lambda i: m.ceil(i/2.0))
 seqs = seqs.join(seq_alns)
 seqs.sort_values(by=['length', 'avg_depth'], inplace=True)
 
