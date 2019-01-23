@@ -9,7 +9,7 @@ EST_LEN_GP_STATS = sys.argv[2]
 BWA_PARSE_OUTPUT = sys.argv[3]
 
 def count_and_write(max_components_est, seqs, cat=None):
-  est_components = list(range(max_components_est))
+  est_components = list(range(max_components_est + 1))
   cols = [0, 'avg_avg_depths_' + str(0), 'avg_gc_' + str(0)]
   for i in est_components[1:]:
     cols.extend([i, 'avg_avg_depths_' + str(i), 'avg_gc_' + str(i)])
