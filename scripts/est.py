@@ -95,6 +95,39 @@ def guess_next_sigma(length_median, length_medians, sigmas):
     K, log_A = np.polyfit(length_medians, np.log(sigmas), 1)
     return m.exp(K * length_median + log_A)
 
+def get_component_params(diploid_idx, components, params):
+    prefix = components[diploid_idx].prefix
+    if re.match('gauss', prefix):
+        return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value)
+    return (params['gamma_wt_c'].value, params['gamma_mean_constraint'].value, params['gamma_var_constraint'].value)
+
+def compute_gaussian_density_at(x, diploid_idx, components, params):
+    wt, mean, sigma = get_component_params(diploid_idx, components, params)
+    return wt * stats.norm.pdf(x, mean, sigma)
+
+def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count):
+    densities = [0] * haploid_copynums_count
+    if components[1] is not None:
+        densities[1] += compute_gaussian_density_at(x, 1, components, params)
+    if (len(components) > 2) and (components[2] is not None):
+        densities[1] += compute_gaussian_density_at(x, 2, components, params)
+    for i in range(2, haploid_copynums_count - 1):
+        densities[i] = compute_gaussian_density_at(x, i * 2 - 1, components, params) + compute_gaussian_density_at(x, i * 2, components, params)
+    if gamma_component_idx is not None:
+        densities[-1] += params['gamma_wt_c'] * stats.gamma.pdf(x, params['gamma_shape'], params['gamma_loc'], params['gamma_scale'])
+    elif haploid_copynums_count > 2:
+        densities[-1] = compute_gaussian_density_at(x, haploid_copynums_count * 2 - 3, components, params)
+        if max_gaussian_copynums % 2 == 0:
+            densities[-1] += compute_gaussian_density_at(x, haploid_copynums_count * 2 - 2, components, params)
+    return np.argmax(densities)
+
+def compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i):
+    wt_haploid_copynum = wt_prev + wt_i
+    wt_prev_normed, wt_i_normed = wt_prev/wt_haploid_copynum, wt_i/wt_haploid_copynum
+    mean_haploid_copynum = (wt_prev_normed * mean_prev) + (wt_i_normed * mean_i)
+    sigma_haploid_copynum = m.sqrt((wt_prev_normed * sigma_prev**2) + (wt_i_normed * sigma_i**2) + (wt_prev_normed * wt_i_normed * (mean_prev - mean_i)**2))
+    return (wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
+
 
 UNITIGS_FILE = sys.argv[1] # FASTA format
 KMER_LEN = int(sys.argv[2])
@@ -381,71 +414,61 @@ for longest_seqs_mode1_copynum in [1, 2]:
         sigma_min = (result.params[components[smallest_copynum].prefix + 'sigma'].value - result.params[components[smallest_copynum].prefix + 'sigma'].stderr) / smallest_copynum
         length_gp_sigmas[longest_seqs_mode1_copynum][len_gp_idx] = result.params[components[smallest_copynum].prefix + 'sigma'].value
 
-        # Compute likeliest copy number assignments
+        # Compute likeliest (haploid) copy number bounds: most robust method; computing density function intersections entails too many edge cases
+        haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0)
+        likeliest_copynums, likeliest_copynum_ubs = [], []
+        copynum_lbs, copynum_ubs = [np.inf] * haploid_copynums_count, [np.inf] * haploid_copynums_count
+        maxdens_idx = compute_likeliest_copynum_at(depths[0], components, result.params, haploid_copynums_count)
+        likeliest_copynums.append(maxdens_idx)
+        copynum_lbs[maxdens_idx] = 0
+        step = 0.02
+        for x in np.arange(depths[0] + step, depths[-1] + step, step):
+            maxdens_idx = compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count)
+            if maxdens_idx != likeliest_copynums[-1]:
+                likeliest_copynum_ubs.append(x)
+                if copynum_ubs[likeliest_copynums[-1]] == np.inf:
+                    copynum_ubs[likeliest_copynums[-1]] = x
+                likeliest_copynums.append(maxdens_idx)
+                if copynum_lbs[maxdens_idx] == np.inf:
+                    copynum_lbs[maxdens_idx] = x
+        likeliest_copynum_ubs.append(np.inf)
+        copynum_ubs[likeliest_copynums[-1]] = np.inf
+
+        # Assign likeliest (haploid) copy numbers
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
-        seqs.loc[gp_len_condition, 'modex'] = seqs[gp_len_condition].mean_kmer_depth / mode
-        seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx + 1
-        lb, ub = 0, np.inf
-        wt_iplus1, mean_iplus1, sigma_iplus1 = 0, 0, 0
+        seqs.loc[gp_len_condition, 'modex'] = seqs.loc[gp_len_condition].mean_kmer_depth / mode
+        seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx
+        lb = 0
+        for i in range(len(likeliest_copynum_ubs)):
+            seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= lb) & (seqs.mean_kmer_depth < likeliest_copynum_ubs[i]), 'likeliest_copynum'] = likeliest_copynums[i]
+            lb = likeliest_copynum_ubs[i]
+
+        def get_copynum_stats_data(haploid_idx, lbs, ubs, wt, mean, sigma):
+            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_idx, lbs[haploid_idx], ubs[haploid_idx], wt, mean, sigma]
+
+        wt_prev, mean_prev, sigma_prev = 0, 0, 0
+        wt_i, mean_i, sigma_i = 0, 0, 0
         if components[1] is not None:
-            wt_iplus1 = result.params[components[1].prefix + 'amplitude']
-            mean_iplus1, sigma_iplus1 = result.params[components[1].prefix + 'center'], result.params[components[1].prefix + 'sigma']
-        if len(components) > 2:
-            wt_iplus2 = result.params[components[2].prefix + 'amplitude']
-            mean_iplus2, sigma_iplus2 = result.params[components[2].prefix + 'center'], result.params[components[2].prefix + 'sigma']
-        for idx in range(2, len(components) - 1, 2):
-            wt_prev = 0
-            if components[idx-1] is not None:
-                prefix_prev = components[idx-1].prefix
-                wt_prev = result.params[prefix_prev + 'amplitude'].value
-                mean_prev, sigma_prev = result.params[prefix_prev + 'center'].value, result.params[prefix_prev + 'sigma'].value
-            prefix_i, prefix_iplus1 = components[idx].prefix, components[idx+1].prefix
-            wt_i = result.params[prefix_i + 'amplitude'].value
-            mean_i, sigma_i = result.params[prefix_i + 'center'].value, result.params[prefix_i + 'sigma'].value
-            if re.match('gauss', prefix_iplus1):
-                wt_iplus1 = result.params[prefix_iplus1 + 'amplitude'].value
-                mean_iplus1, sigma_iplus1 = result.params[prefix_iplus1 + 'center'].value, result.params[prefix_iplus1 + 'sigma'].value
-            else:
-                wt_iplus1 = result.params['gamma_wt_c'].value
-                mean_iplus1, sigma_iplus1 = result.params['gamma_mean_constraint'].value, m.sqrt(result.params['gamma_var_constraint'].value)
-            if len(components) - idx > 2:
-                prefix_iplus2 = components[idx+2].prefix
-                wt_iplus2 = result.params[prefix_iplus2 + 'amplitude'].value
-                mean_iplus2, sigma_iplus2 = result.params[prefix_iplus2 + 'center'].value, result.params[prefix_iplus2 + 'sigma'].value
-            def densities_diff(x):
-                density_curr = wt_prev * stats.norm.pdf(x, mean_prev, sigma_prev) + wt_i * stats.norm.pdf(x, mean_i, sigma_i)
-                if len(components) - idx > 2:
-                    return wt_iplus1 * stats.norm.pdf(x, mean_iplus1, sigma_iplus1) + wt_iplus2 * stats.norm.pdf(x, mean_iplus2, sigma_iplus2) - density_curr
-                return wt_iplus1 * stats.norm.pdf(x, mean_iplus1, sigma_iplus1) - density_curr
-            roots = optimize.root(densities_diff, (idx + 1) * result.params[components[smallest_copynum].prefix + 'center'].value)
-            #debug_file.write('start: ' + str((idx + 0.5) * result.params[prefix_i + 'center'].value) + ', roots: ' + str(roots) + '\n')
-            #print('start: ' + str((idx + 0.5) * result.params['gauss1_center'].value))
-            ub = roots.x[0]
-            #debug_file.write('ub: ' + str(ub) + '\n')
-            #print('ub: ' + str(ub))
-            haploid_copynum = idx / 2
-            seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb) & (seqs.mean_kmer_depth <= ub), 'likeliest_copynum'] = haploid_copynum
-            copynum_stats_data = [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_copynum]
-            wt_haploid_copynum = wt_prev + wt_i
-            wt_prev_normed, wt_i_normed = wt_prev/wt_haploid_copynum, wt_i/wt_haploid_copynum
-            mean_haploid_copynum = (wt_prev_normed * mean_prev) + (wt_i_normed * mean_i)
-            sigma_haploid_copynum = m.sqrt((wt_prev_normed * sigma_prev**2) + (wt_i_normed * sigma_i**2) + (wt_prev_normed * wt_i_normed * (mean_prev - mean_i)**2))
-            copynum_stats_data.extend([lb, ub, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum])
-            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
-            lb = ub
-        ub = np.inf
-        haploid_copynum = m.floor(len(components) / 2)
-        seqs.loc[gp_len_condition & (seqs.mean_kmer_depth > lb), 'likeliest_copynum'] = haploid_copynum
-        copynum_stats_data = [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_copynum]
-        if len(components) % 2 == 0:
-            wt_last, mean_last, sigma_last = wt_iplus1, mean_iplus1, sigma_iplus1
-        else:
-            wt_last = wt_iplus1 + wt_iplus2
-            wt_iplus1_normed, wt_iplus2_normed = wt_iplus1/wt_last, wt_iplus2/wt_last
-            mean_last = (wt_iplus1_normed * mean_iplus1) + (wt_iplus2_normed * mean_iplus2)
-            sigma_last = m.sqrt((wt_iplus1_normed * sigma_iplus1**2) + (wt_iplus2_normed * sigma_iplus2**2) + (wt_iplus1_normed * wt_iplus2_normed * (mean_iplus2 - mean_iplus1)**2))
-        copynum_stats_data.extend([lb, ub, wt_last, mean_last, sigma_last])
+            wt_prev, mean_prev, sigma_prev = get_component_params(1, components, result.params)
+        if (len(components) > 2) and (components[2] is not None):
+            wt_i, mean_i, sigma_i = get_component_params(2, components, result.params)
+        wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
+        copynum_stats_data = get_copynum_stats_data(1, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
         add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
+        for i in range(2, haploid_copynums_count - 1):
+            wt_prev, mean_prev, sigma_prev = get_component_params(2 * i - 1, components, result.params)
+            wt_i, mean_i, sigma_i = get_component_params(2 * i, components, result.params)
+            wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
+            copynum_stats_data = get_copynum_stats_data(i, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
+            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
+        if haploid_copynums_count > 2:
+            wt_prev, mean_prev, sigma_prev = get_component_params(2 * haploid_copynums_count - 3, components, result.params)
+            wt_i, mean_i, sigma_i = 0, 0, 0
+            if len(components) % 2 == 1: # even number of Gaussian-estimated diploid copy number components
+                wt_i, mean_i, sigma_i = get_component_params(2 * haploid_copynums_count - 2, components, result.params)
+            wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
+            copynum_stats_data = get_copynum_stats_data(haploid_copynums_count - 1, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
+            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
 
     debug_file.write('')
     print('')
