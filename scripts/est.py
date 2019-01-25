@@ -172,22 +172,25 @@ len_percentiles_uniq = np.unique(np.percentile(seqs.len.values, np.arange(quanti
 length_gps_for_est = get_length_gps_for_est(seqs, len_percentiles_uniq, BIN_MINSIZE)
 length_gps_count = len(length_gps_for_est)
 length_gp_medians = list(map(lambda gp: gp.len.median(), length_gps_for_est))
-length_gp_sigmas = [None, [None] * length_gps_count, [None] * length_gps_count]
 
-LEN_GP_STATS_COLS = ['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'min_copynum', 'max_copynum_est']
+LEN_GP_STATS_COLS = ['count', 'min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'min_copynum', 'max_copynum_est']
 len_gp_stats = [None]
 COPYNUM_STATS_COLS = ['len_gp_id', 'len_gp_min_len', 'len_gp_max_len', 'copynum', 'depth_lb', 'depth_max', 'weight', 'depth_mean', 'depth_stdev']
 copynum_stats = [None]
 
-# Fit under assumption that first peak corresponds to mode of copy-number 1 or 2 (unique homozygous) sequences
+# Fit under assumption that first peak of density curve for longest sequences corresponds to mode of copy-number 1 or 2 (unique homozygous) sequences
 mode_error = 0.05
+aic = np.inf
+better_fit_model = 1
 
 for longest_seqs_mode1_copynum in [1, 2]:
     log_file = open(OUTPUT_DIR + '/log' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
     # TODO: Rm debug file
     debug_file = open(OUTPUT_DIR + '/debug' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
     len_gp_stats.append(pd.DataFrame(data=None, index=pd.RangeIndex(stop=length_gps_count), columns=LEN_GP_STATS_COLS))
+    length_gp_sigmas = [None] * length_gps_count
     copynum_stats_hash = { col: [] for col in COPYNUM_STATS_COLS }
+    aic_current = 0
 
     mode, mode_min, mode_max = np.nan, NONNEG_CONSTANT, np.inf
     sigma_min = NONNEG_CONSTANT
@@ -208,6 +211,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         kde_grid = np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, grid_min, kde_grid_density) + 1)
         density = kde.evaluate(kde_grid)
 
+        len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'count'] = length_gps_for_est[len_gp_idx].shape[0]
         len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'min_len'] = length_gps_for_est[len_gp_idx].len.min()
         len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_len'] = length_gps_for_est[len_gp_idx].len.max()
         len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'max_depth'] = length_gps_for_est[len_gp_idx].mean_kmer_depth.max()
@@ -242,7 +246,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
             mode1_copynum = round(len_group_mode / mode)
             sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode, depths[0])) / mode1_copynum
         else:
-            sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[longest_seqs_mode1_copynum][(len_gp_idx + 1):])
+            sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[(len_gp_idx + 1):])
 
         # TODO: rm blank line
         if sigma < sigma_min:
@@ -405,6 +409,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
 
         lmfit_range = np.arange(lb, ub, step)
         result = mixture_model.fit(np.histogram(depths, lmfit_range)[0], params, x=lmfit_range[1:])
+        aic_current += result.aic
 
         # Set mode the first time, i.e. from estimation and classification of longest sequences
         if mode_max == np.inf:
@@ -412,7 +417,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
             mode_min = (1 - mode_error) * mode
             mode_max = (1 + mode_error) * mode
         sigma_min = (result.params[components[smallest_copynum].prefix + 'sigma'].value - result.params[components[smallest_copynum].prefix + 'sigma'].stderr) / smallest_copynum
-        length_gp_sigmas[longest_seqs_mode1_copynum][len_gp_idx] = result.params[components[smallest_copynum].prefix + 'sigma'].value
+        length_gp_sigmas[len_gp_idx] = result.params[components[smallest_copynum].prefix + 'sigma'].value
 
         # Compute likeliest (haploid) copy number bounds: most robust method; computing density function intersections entails too many edge cases
         haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0)
@@ -479,21 +484,24 @@ for longest_seqs_mode1_copynum in [1, 2]:
     log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n')
     log_file.write(result.fit_report())
     log_file.write('\n')
-
     log_file.close()
+
     debug_file.close()
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
-    seq_label_filename = OUTPUT_DIR + '/sequence-labels-' + str(longest_seqs_mode1_copynum) + '.csv'
-    seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
 
-LEN_GP_STATS_OUTPUT_COLS = tuple(['min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'min_copynum', 'max_copynum_est'])
-LEN_GP_STATS_OUTPUT_HEADER = ['Min. len.', 'Max. len.', 'Max. depth', 'Max. depth in estimation', 'Smallest diploid copy # present', 'Largest diploid copy # estimated']
-for longest_seqs_mode1_copynum in [1, 2]:
-    filename = OUTPUT_DIR + '/length_gp_stats_' + str(longest_seqs_mode1_copynum) + '.csv'
-    len_gp_stats[longest_seqs_mode1_copynum].to_csv(filename, columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
+    if aic_current < aic:
+        aic = aic_current
+        better_fit_model = longest_seqs_mode1_copynum
+        print('AIC: ' + str(aic) + ', model: ' + str(better_fit_model))
+    seq_label_filename = OUTPUT_DIR + '/sequence-labels.csv'
+    if better_fit_model == longest_seqs_mode1_copynum:
+        seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
+
+# Write length group and copy-number component stats
+LEN_GP_STATS_OUTPUT_COLS = tuple(['count', 'min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'min_copynum', 'max_copynum_est'])
+LEN_GP_STATS_OUTPUT_HEADER = ['Number of sequences', 'Min. len.', 'Max. len.', 'Max. depth', 'Max. depth in estimation', 'Smallest diploid copy # present', 'Largest diploid copy # estimated']
+len_gp_stats[better_fit_model].to_csv(OUTPUT_DIR + '/length_gp_stats.csv', columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
 
 COPYNUM_STATS_OUTPUT_HEADER = ['Group #', 'Group min. len.', 'Group max. len.', 'Component #', 'Component depth lower bound', 'Component max. depth', 'Weight', 'Mean', 'Std. deviation']
-for longest_seqs_mode1_copynum in [1, 2]:
-    filename = OUTPUT_DIR + '/copynumber_params_' + str(longest_seqs_mode1_copynum) + '.csv'
-    copynum_stats[longest_seqs_mode1_copynum].to_csv(filename, header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
+copynum_stats[better_fit_model].to_csv(OUTPUT_DIR + '/copynumber_params.csv', header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
 
