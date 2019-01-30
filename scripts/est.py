@@ -99,7 +99,7 @@ def get_component_params(diploid_idx, components, params):
     prefix = components[diploid_idx].prefix
     if re.match('gauss', prefix):
         return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value)
-    return (params['gamma_wt_c'].value, params['gamma_mean_constraint'].value, params['gamma_var_constraint'].value)
+    return (params['gamma_wt_c'].value, params['gamma_mean_constraint'].value, m.sqrt(params['gamma_var_constraint'].value))
 
 def compute_gaussian_density_at(x, diploid_idx, components, params):
     wt, mean, sigma = get_component_params(diploid_idx, components, params)
