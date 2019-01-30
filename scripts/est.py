@@ -71,11 +71,7 @@ def init_gaussian(i, component_weights):
         model = GaussianModel(prefix=prefix)
     return model
 
-# TODO: Rm debug statements
 def gamma(x, shape, loc, scale):
-    #debug_file.write('shape: ' + str(shape) + ', loc: ' + str(loc) + ', scale: ' + str(scale))
-    #debug_file.write(str(stats.gamma.pdf(x, shape, loc, scale)))
-    #debug_file.write('')
     return stats.gamma.pdf(x, shape, loc, scale)
 
 def add_to_copynum_stats(data, cols, stats_hash):
@@ -185,8 +181,6 @@ better_fit_model = 1
 
 for longest_seqs_mode1_copynum in [1, 2]:
     log_file = open(OUTPUT_DIR + '/log' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
-    # TODO: Rm debug file
-    debug_file = open(OUTPUT_DIR + '/debug' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
     len_gp_stats.append(pd.DataFrame(data=None, index=pd.RangeIndex(stop=length_gps_count), columns=LEN_GP_STATS_COLS))
     length_gp_sigmas = [None] * length_gps_count
     copynum_stats_hash = { col: [] for col in COPYNUM_STATS_COLS }
@@ -195,7 +189,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
     mode, mode_min, mode_max = np.nan, NONNEG_CONSTANT, np.inf
     sigma_min = NONNEG_CONSTANT
     for len_gp_idx in range(length_gps_count - 1, -1, -1):
-        debug_file.write(str(len_gp_idx) + '\n')
         print(len_gp_idx)
         # Estimate any probable error distribution, and mode excluding error sequences
         depths = np.copy(length_gps_for_est[len_gp_idx].mean_kmer_depth.values)
@@ -475,7 +468,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
             copynum_stats_data = get_copynum_stats_data(haploid_copynums_count - 1, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
             add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
 
-    debug_file.write('')
     print('')
 
     log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
@@ -486,7 +478,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
     log_file.write('\n')
     log_file.close()
 
-    debug_file.close()
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
 
     if aic_current < aic:
