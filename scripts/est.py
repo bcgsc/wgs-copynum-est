@@ -181,13 +181,17 @@ better_fit_model = 1
 
 for longest_seqs_mode1_copynum in [1, 2]:
     log_file = open(OUTPUT_DIR + '/log' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
+    log_header = 'ESTIMATION ROUND ' + str(longest_seqs_mode1_copynum) + ': ASSUME 1ST PEAK OF DENSITY CURVE FOR LONGEST SEQUENCES CORRESPONDS TO MODE OF DIPLOID COPY-NUMBER '
+    log_header += str(longest_seqs_mode1_copynum) + ' SEQUENCES\n'
+    log_file.write(log_header)
+
     len_gp_stats.append(pd.DataFrame(data=None, index=pd.RangeIndex(stop=length_gps_count), columns=LEN_GP_STATS_COLS))
     length_gp_sigmas = [None] * length_gps_count
     copynum_stats_hash = { col: [] for col in COPYNUM_STATS_COLS }
     aic_current = 0
-
     mode, mode_min, mode_max = np.nan, NONNEG_CONSTANT, np.inf
     sigma_min = NONNEG_CONSTANT
+
     for len_gp_idx in range(length_gps_count - 1, -1, -1):
         print(len_gp_idx)
         # Estimate any probable error distribution, and mode excluding error sequences
@@ -468,25 +472,29 @@ for longest_seqs_mode1_copynum in [1, 2]:
             copynum_stats_data = get_copynum_stats_data(haploid_copynums_count - 1, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
             add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
 
-    print('')
-
-    log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
-    log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
-    log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(curr_len_gp_stats.max_depth) + '. ')
-    log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n')
-    log_file.write(result.fit_report())
-    log_file.write('\n')
-    log_file.close()
+        log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
+        log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
+        log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(curr_len_gp_stats.max_depth) + '. ')
+        log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n\n')
+        log_file.write('Fit report:\n')
+        log_file.write(result.fit_report())
+        log_file.write('\n\n')
 
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
-
     if aic_current < aic:
         aic = aic_current
         better_fit_model = longest_seqs_mode1_copynum
-        print('AIC: ' + str(aic) + ', model: ' + str(better_fit_model))
+    log_file.write('Sum of per-length-group model AICs: ' + str(aic))
+    log_file.write('\n\n')
+    print('')
     seq_label_filename = OUTPUT_DIR + '/sequence-labels.csv'
     if better_fit_model == longest_seqs_mode1_copynum:
         seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
+
+log_footer = 'BETTER-FIT MODEL (LOWER SUM OF PER-LENGTH-GROUP MODEL AIC SCORES): 1ST PEAK OF DENSITY CURVE FOR LONGEST SEQUENCES CORRESPONDS TO MODE OF DIPLOID COPY-NUMBER '
+log_footer += str(better_fit_model) + ' SEQUENCES\n'
+log_file.write(log_footer)
+log_file.close()
 
 # Write length group and copy-number component stats
 LEN_GP_STATS_OUTPUT_COLS = tuple(['count', 'min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'min_copynum', 'max_copynum_est'])
