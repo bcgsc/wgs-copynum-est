@@ -92,7 +92,7 @@ def get_component_params(diploid_idx, components, params):
     prefix = components[diploid_idx].prefix
     if re.match('gauss', prefix):
         return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value)
-    return (params['gamma_wt_c'].value, params['gamma_mean_constraint'].value, m.sqrt(params['gamma_var_constraint'].value))
+    return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value))
 
 def compute_gaussian_density_at(x, diploid_idx, components, params):
     wt, mean, sigma = get_component_params(diploid_idx, components, params)
@@ -358,23 +358,23 @@ for longest_seqs_mode1_copynum in [1, 2]:
             if tail_fat_enough and (tail_mean_density >= 3 * component_weights[i] * stats.norm.pdf(tail_stats.mean, max_gaussian_copynums * mode, max_gaussian_copynums * sigma)):
                 gamma_model = Model(gamma, prefix='gamma_')
                 components.append(gamma_model)
+                params.update(gamma_model.make_params())
                 # rough guesses (likely overestimates) for starting parameter values
+                lim_j = curr_mode - (4.5 * j * sigma)
+                if lim_j <= 0:
+                    params['gamma_loc'].set(value = lim_j, min = 2 * lim_j, max = 0)
+                else:
+                    params['gamma_loc'].set(value = 1.5 * lim_j, max = lim_j + (0.5 * j * sigma)) # the asymmetry with lim_j <= 0 is intentional, to allow a wider range for loc
                 pre = 0.5 * depths[(depths > (j-1) * mode) & (depths <= curr_mode)].size
                 post = depths[depths > curr_mode].size
                 pre_fraction = pre * 1.0 / (pre + post)
-                loc = curr_mode - (2 * mode)
                 mean_start = pre_fraction * curr_mode + (1 - pre_fraction) * tail_stats.mean
-                var_start = pre_fraction * j**2 * sigma_min**2 + (1 - pre_fraction) * tail_stats.variance #iffyy...??
-                shape_start = 1 + ((curr_mode - loc) * (mean_start - loc) / var_start)
-                params.update(gamma_model.make_params())
-                params['gamma_mode_constraint'] = Parameter(value = mean_start - m.sqrt(var_start / shape_start), min = curr_mode + NONNEG_CONSTANT)
-                params['gamma_shape'].set(value = shape_start, min = 1 + NONNEG_CONSTANT)
-                params['gamma_var_constraint'] = Parameter(value = var_start, min = j**2 * sigma_min**2 + NONNEG_CONSTANT)
-                params['gamma_scale'].set(expr = 'sqrt(gamma_var_constraint / gamma_shape)')
-                params['gamma_mean_constraint'] = Parameter(expr = 'gamma_mode_constraint + gamma_scale')
-                params['gamma_loc'].set(expr = 'gamma_mean_constraint - (gamma_shape * gamma_scale)')
-                gamma_weight = 'gamma_wt_'
-                gamma_weight_model = ConstantModel(prefix=gamma_weight)
+                params['gamma_mode'] = Parameter(value = (mean_start + curr_mode) / 2.0, min = curr_mode) # avoid starting at or very near boundary
+                params['gamma_mean'] = Parameter(value = mean_start, min = curr_mode + NONNEG_CONSTANT)
+                params['gamma_scale'].set(expr = 'gamma_mean - gamma_mode', min = NONNEG_CONSTANT)
+                params['gamma_shape'].set(expr = '1 + (gamma_mode - gamma_loc) / gamma_scale') # for this to work, must have mode > loc
+                params['gamma_variance'] = Parameter(expr = 'gamma_shape * (gamma_scale ** 2)')
+                gamma_weight_model = ConstantModel(prefix='gamma_wt_')
                 gamma_weight_model.set_param_hint('c', value = max(component_weights[max_gaussian_copynums], (pre + post) * 1.0 / depths.size), min=NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
                 params.update(gamma_weight_model.make_params())
                 copynum_components = copynum_components + gamma_weight_model * gamma_model
@@ -392,9 +392,9 @@ for longest_seqs_mode1_copynum in [1, 2]:
             wt_names = filter(lambda s: s is not None, map(lambda c: c.prefix + 'amplitude' if c is not None else None, components[-2:(smallest_copynum - 1):-1]))
             wt_expr = '1 - ' + ' - '.join(wt_names)
             if gamma_component_idx is None:
-                params[components[-1].prefix + 'amplitude'].set(expr = wt_expr, min = 0, max = 1)
+                params[components[-1].prefix + 'amplitude'].set(expr = wt_expr, min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
             else:
-                params['gamma_wt_c'].set(expr = wt_expr, min = 0, max = 1)
+                params['gamma_wt_c'].set(expr = wt_expr, min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
 
         # Finally estimate copy numbers using lmfit
         step = (depths[-1] - depths[0]) / m.floor(depths.size * 1.0 / 100) # heuristic n...
@@ -466,7 +466,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         wt_i, mean_i, sigma_i = 0, 0, 0
         if components[1] is not None:
             wt_prev, mean_prev, sigma_prev = get_component_params(1, components, result.params)
-        if (len(components) > 2) and (components[2] is not None):
+        if (len(components) > 2) and (components[2] is not None): # 2nd condition should never be needed in practice, as long as algorithm doesn't allow empty component beyond diploid cp#1
             wt_i, mean_i, sigma_i = get_component_params(2, components, result.params)
         if args.half:
             add_to_copynum_stats(get_copynum_stats_data(0.5, wt_prev, mean_prev, sigma_prev), COPYNUM_STATS_COLS, copynum_stats_hash)
