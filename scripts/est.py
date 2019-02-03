@@ -359,12 +359,17 @@ for longest_seqs_mode1_copynum in [1, 2]:
                 gamma_model = Model(gamma, prefix='gamma_')
                 components.append(gamma_model)
                 params.update(gamma_model.make_params())
-                # rough guesses (likely overestimates) for starting parameter values
+                # Rough guesses (likely overestimates) for starting parameter values.
+                # Widen/narrow range for loc beyond/within that suggested by lim_j to allow for error in estimating lim_j, and to constrain loc to relatively reasonable/realistic values.
                 lim_j = curr_mode - (4.5 * j * sigma)
                 if lim_j <= 0:
-                    params['gamma_loc'].set(value = lim_j, min = 2 * lim_j, max = 0)
+                    maxloc = lim_j
+                    while maxloc <= 0:
+                        maxloc += 0.5 * j * sigma
+                    params['gamma_loc'].set(value = lim_j, min = 2 * lim_j, max = maxloc) # max would have been 0
                 else:
-                    params['gamma_loc'].set(value = 1.5 * lim_j, max = lim_j + (0.5 * j * sigma)) # the asymmetry with lim_j <= 0 is intentional, to allow a wider range for loc
+                    # could have left min out, but it sometimes gets too negative (and lim_j could be incorrect, as commented on above)
+                    params['gamma_loc'].set(value = 1.5 * lim_j, min = -2 * lim_j, max = lim_j + (0.5 * j * sigma))
                 pre = 0.5 * depths[(depths > (j-1) * mode) & (depths <= curr_mode)].size
                 post = depths[depths > curr_mode].size
                 pre_fraction = pre * 1.0 / (pre + post)
