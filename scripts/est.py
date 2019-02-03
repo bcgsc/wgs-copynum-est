@@ -179,8 +179,9 @@ mode_error = 0.05
 aic = np.inf
 better_fit_model = 1
 
+log_file = open(OUTPUT_DIR + '/log.txt', 'w', newline='')
+
 for longest_seqs_mode1_copynum in [1, 2]:
-    log_file = open(OUTPUT_DIR + '/log' + str(longest_seqs_mode1_copynum) + '.txt', 'w', newline='')
     log_header = 'ESTIMATION ROUND ' + str(longest_seqs_mode1_copynum) + ': ASSUME 1ST PEAK OF DENSITY CURVE FOR LONGEST SEQUENCES CORRESPONDS TO MODE OF DIPLOID COPY-NUMBER '
     log_header += str(longest_seqs_mode1_copynum) + ' SEQUENCES\n'
     log_file.write(log_header)
