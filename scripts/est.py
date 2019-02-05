@@ -1,5 +1,6 @@
 # TODO: Delete unusued imports
 import array
+import argparse
 import csv
 import datetime
 from lmfit import Model, Parameter, Parameters
@@ -125,22 +126,24 @@ def compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, 
     return (wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
 
 
-UNITIGS_FILE = sys.argv[1] # FASTA format
-KMER_LEN = int(sys.argv[2])
-OUTPUT_DIR = sys.argv[3]
+argparser = argparse.ArgumentParser(description='Estimate genomic copy number for haploid or diploid whole-genome shotgun assembly sequences')
+argparser.add_argument('unitigs_file', type=str, help='FASTA file listing sequences to be classified')
+argparser.add_argument('kmer_len', type=int, help='Value of k used in assembly that output sequences to be classified')
+argparser.add_argument('output_dir', type=str, help='Directory to which output files should be written')
+args = argparser.parse_args()
 NONNEG_CONSTANT = 1.e-12
 
 seq_lens = array.array('L')
 seq_mean_kmer_depths = array.array('d')
 seq_gc_contents = array.array('d')
 
-with open(UNITIGS_FILE) as unitigs:
+with open(args.unitigs_file) as unitigs:
     line = unitigs.readline()
     while line:
         if re.search('^>[0-9]', line):
             row = list(map(int, line[1:].split()))
             seq_lens.append(row[1])
-            kmers = row[1] - KMER_LEN + 1
+            kmers = row[1] - args.kmer_len + 1
             seq_mean_kmer_depths.append(row[2] / kmers)
         else:
             seq_gc_contents.append(compute_gc_content(line))
@@ -179,7 +182,7 @@ mode_error = 0.05
 aic = np.inf
 better_fit_model = 1
 
-log_file = open(OUTPUT_DIR + '/log.txt', 'w', newline='')
+log_file = open(args.output_dir + '/log.txt', 'w', newline='')
 
 for longest_seqs_mode1_copynum in [1, 2]:
     log_header = 'ESTIMATION ROUND ' + str(longest_seqs_mode1_copynum) + ': ASSUME 1ST PEAK OF DENSITY CURVE FOR LONGEST SEQUENCES CORRESPONDS TO MODE OF DIPLOID COPY-NUMBER '
@@ -489,7 +492,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
     log_file.write('Sum of per-length-group model AICs: ' + str(aic))
     log_file.write('\n\n')
     print('')
-    seq_label_filename = OUTPUT_DIR + '/sequence-labels.csv'
+    seq_label_filename = args.output_dir + '/sequence-labels.csv'
     if better_fit_model == longest_seqs_mode1_copynum:
         seqs.loc[:, 'len':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
 
@@ -501,8 +504,8 @@ log_file.close()
 # Write length group and copy-number component stats
 LEN_GP_STATS_OUTPUT_COLS = tuple(['count', 'min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'min_copynum', 'max_copynum_est'])
 LEN_GP_STATS_OUTPUT_HEADER = ['Number of sequences', 'Min. len.', 'Max. len.', 'Max. depth', 'Max. depth in estimation', 'Smallest diploid copy # present', 'Largest diploid copy # estimated']
-len_gp_stats[better_fit_model].to_csv(OUTPUT_DIR + '/length_gp_stats.csv', columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
+len_gp_stats[better_fit_model].to_csv(args.output_dir + '/length_gp_stats.csv', columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
 
 COPYNUM_STATS_OUTPUT_HEADER = ['Group #', 'Group min. len.', 'Group max. len.', 'Component #', 'Component depth lower bound', 'Component max. depth', 'Weight', 'Mean', 'Std. deviation']
-copynum_stats[better_fit_model].to_csv(OUTPUT_DIR + '/copynumber_params.csv', header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
+copynum_stats[better_fit_model].to_csv(args.output_dir + '/copynumber_params.csv', header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
 
