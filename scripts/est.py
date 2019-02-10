@@ -390,7 +390,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
         if len(components) - 1 == smallest_copynum:
             params[components[smallest_copynum].prefix + 'amplitude'].set(value = 1.0, vary=False)
         else:
-            wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[-2:(smallest_copynum - 1):-1]))
+            wt_names = filter(lambda s: s is not None, map(lambda c: c.prefix + 'amplitude' if c is not None else None, components[-2:(smallest_copynum - 1):-1]))
+            wt_expr = '1 - ' + ' - '.join(wt_names)
             if gamma_component_idx is None:
                 params[components[-1].prefix + 'amplitude'].set(expr = wt_expr, min = 0, max = 1)
             else:
