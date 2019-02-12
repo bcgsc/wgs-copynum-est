@@ -1,4 +1,3 @@
-# TODO: Delete unusued imports
 import array
 import argparse
 import csv
@@ -9,11 +8,8 @@ import math as m
 import numpy as np
 import pandas as pd
 import re
-from scipy import optimize, stats
-from scipy.special import gamma as gamma_fn
+from scipy import stats
 import statsmodels.api as sm
-#from sympy import Symbol, nsolve
-import sys
 import time
 
 
