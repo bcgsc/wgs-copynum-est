@@ -416,6 +416,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
             mode_max = (1 + mode_error) * mode
         sigma_err = result.params[components[smallest_copynum].prefix + 'sigma'].stderr or 0
         sigma_min = (result.params[components[smallest_copynum].prefix + 'sigma'].value - sigma_err) / smallest_copynum
+        if sigma_err == 0:
+            sigma_min = (1 - mode_error) * sigma_min
         length_gp_sigmas[len_gp_idx] = result.params[components[smallest_copynum].prefix + 'sigma'].value
 
         # Compute likeliest (haploid) copy number bounds: most robust method; computing density function intersections entails too many edge cases
