@@ -256,7 +256,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         # Estimate copy-number component weights starting at means of cp#s 1 & 2, using heuristic of 2x cp#1 density at cp#2 mean
         component_weights = [np.nan] * (2 + int(depths[-1] > mode * 2))
         if len(component_weights) < 3:
-            component_weights[1] = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density) * sigma_sqrt_2pi
+            component_weights[1] = 1
         elif mode <= depths[0]:
             component_weights[1] = 0
             # likely slight overestimate if length group has copy-number 3 sequences
