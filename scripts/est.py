@@ -449,8 +449,13 @@ for longest_seqs_mode1_copynum in [1, 2]:
             seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= lb) & (seqs.mean_kmer_depth < likeliest_copynum_ubs[i]), 'likeliest_copynum'] = likeliest_copynums[i]
             lb = likeliest_copynum_ubs[i]
 
-        def get_copynum_stats_data(haploid_idx, lbs, ubs, wt, mean, sigma):
-            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_idx, lbs[haploid_idx], ubs[haploid_idx], wt, mean, sigma]
+        def get_copynum_stats_data(haploid_idx, wt, mean, sigma):
+            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_idx, copynum_lbs[haploid_idx], copynum_ubs[haploid_idx], wt, mean, sigma]
+
+        def update_copynum_stats(copynum, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i):
+            wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
+            copynum_stats_data = get_copynum_stats_data(copynum, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
+            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
 
         wt_prev, mean_prev, sigma_prev = 0, 0, 0
         wt_i, mean_i, sigma_i = 0, 0, 0
@@ -458,23 +463,17 @@ for longest_seqs_mode1_copynum in [1, 2]:
             wt_prev, mean_prev, sigma_prev = get_component_params(1, components, result.params)
         if (len(components) > 2) and (components[2] is not None):
             wt_i, mean_i, sigma_i = get_component_params(2, components, result.params)
-        wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
-        copynum_stats_data = get_copynum_stats_data(1, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
-        add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
+        update_copynum_stats(1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
         for i in range(2, haploid_copynums_count - 1):
             wt_prev, mean_prev, sigma_prev = get_component_params(2 * i - 1, components, result.params)
             wt_i, mean_i, sigma_i = get_component_params(2 * i, components, result.params)
-            wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
-            copynum_stats_data = get_copynum_stats_data(i, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
-            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
+            update_copynum_stats(i, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
         if haploid_copynums_count > 2:
             wt_prev, mean_prev, sigma_prev = get_component_params(2 * haploid_copynums_count - 3, components, result.params)
             wt_i, mean_i, sigma_i = 0, 0, 0
             if len(components) % 2 == 1: # even number of Gaussian-estimated diploid copy number components
                 wt_i, mean_i, sigma_i = get_component_params(2 * haploid_copynums_count - 2, components, result.params)
-            wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
-            copynum_stats_data = get_copynum_stats_data(haploid_copynums_count - 1, copynum_lbs, copynum_ubs, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
-            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
+            update_copynum_stats(haploid_copynums_count - 1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
 
         log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
         log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
