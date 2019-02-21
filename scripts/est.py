@@ -98,10 +98,11 @@ def compute_gaussian_density_at(x, diploid_idx, components, params):
     wt, mean, sigma = get_component_params(diploid_idx, components, params)
     return wt * stats.norm.pdf(x, mean, sigma)
 
-def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count):
+def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count, include_half):
+    lowest_is_1 = not(include_half)
     densities = [0] * haploid_copynums_count
     if components[1] is not None:
-        densities[1] += compute_gaussian_density_at(x, 1, components, params)
+        densities[int(lowest_is_1)] = compute_gaussian_density_at(x, 1, components, params)
     if (len(components) > 2) and (components[2] is not None):
         densities[1] += compute_gaussian_density_at(x, 2, components, params)
     for i in range(2, haploid_copynums_count - 1):
@@ -112,7 +113,7 @@ def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count):
         densities[-1] = compute_gaussian_density_at(x, haploid_copynums_count * 2 - 3, components, params)
         if max_gaussian_copynums % 2 == 0:
             densities[-1] += compute_gaussian_density_at(x, haploid_copynums_count * 2 - 2, components, params)
-    return np.argmax(densities)
+    return (np.argmax(densities) or 0.5)
 
 def compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i):
     wt_haploid_copynum = wt_prev + wt_i
@@ -123,10 +124,12 @@ def compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, 
 
 
 argparser = argparse.ArgumentParser(description='Estimate genomic copy number for haploid or diploid whole-genome shotgun assembly sequences')
+argparser.add_argument('--half', action="store_true", help='Include copy number 0.5, i.e. heterozygous single-copy, in sequence classification')
 argparser.add_argument('unitigs_file', type=str, help='FASTA file listing sequences to be classified')
 argparser.add_argument('kmer_len', type=int, help='Value of k used in assembly that output sequences to be classified')
 argparser.add_argument('output_dir', type=str, help='Directory to which output files should be written')
 args = argparser.parse_args()
+
 NONNEG_CONSTANT = 1.e-12
 
 seq_lens = array.array('L')
@@ -253,7 +256,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
         sigma_sqrt_2pi_reciprocal = 1 / sigma_sqrt_2pi
 
-        # Estimate copy-number component weights starting at means of cp#s 1 & 2, using heuristic of 2x cp#1 density at cp#2 mean
+        # Estimate copy-number component weights starting at means of cp#s 1 & 2, using heuristic of 2x cp#1 density (for the sum of all non-cp#2 densities) at cp#2 mean
         component_weights = [np.nan] * (2 + int(depths[-1] > mode * 2))
         if len(component_weights) < 3:
             component_weights[1] = 1
@@ -421,24 +424,26 @@ for longest_seqs_mode1_copynum in [1, 2]:
         length_gp_sigmas[len_gp_idx] = result.params[components[smallest_copynum].prefix + 'sigma'].value
 
         # Compute likeliest (haploid) copy number bounds: most robust method; computing density function intersections entails too many edge cases
-        haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0)
+        # Have both likeliest_copynum_ubs and copynum_ubs because one copy number could in principle be the most probable over multiple ranges, but
+        # it's easier to just record the first (primary) in copynum_ubs, which is for reporting purposes (while likeliest_copynum_ubs is for assignment)
+        haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0) # bad naming: actually includes one extra for None or 0.5
         likeliest_copynums, likeliest_copynum_ubs = [], []
-        copynum_lbs, copynum_ubs = [np.inf] * haploid_copynums_count, [np.inf] * haploid_copynums_count
-        maxdens_idx = compute_likeliest_copynum_at(depths[0], components, result.params, haploid_copynums_count)
+        copynum_lbs, copynum_ubs = [np.inf] * haploid_copynums_count, [np.inf] * haploid_copynums_count # 1st element is None or for haploid copy number 0.5 (diploid 1)
+        maxdens_idx = compute_likeliest_copynum_at(depths[0], components, result.params, haploid_copynums_count, args.half)
         likeliest_copynums.append(maxdens_idx)
-        copynum_lbs[maxdens_idx] = 0
+        copynum_lbs[m.floor(maxdens_idx)] = 0
         step = 0.02
         for x in np.arange(depths[0] + step, depths[-1] + step, step):
-            maxdens_idx = compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count)
+            maxdens_idx = compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count, args.half)
             if maxdens_idx != likeliest_copynums[-1]:
                 likeliest_copynum_ubs.append(x)
-                if copynum_ubs[likeliest_copynums[-1]] == np.inf:
-                    copynum_ubs[likeliest_copynums[-1]] = x
+                if copynum_ubs[m.floor(likeliest_copynums[-1])] == np.inf:
+                    copynum_ubs[m.floor(likeliest_copynums[-1])] = x
                 likeliest_copynums.append(maxdens_idx)
-                if copynum_lbs[maxdens_idx] == np.inf:
-                    copynum_lbs[maxdens_idx] = x
+                if copynum_lbs[m.floor(maxdens_idx)] == np.inf:
+                    copynum_lbs[m.floor(maxdens_idx)] = x
         likeliest_copynum_ubs.append(np.inf)
-        copynum_ubs[likeliest_copynums[-1]] = np.inf
+        copynum_ubs[m.floor(likeliest_copynums[-1])] = np.inf
 
         # Assign likeliest (haploid) copy numbers
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
@@ -449,8 +454,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
             seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= lb) & (seqs.mean_kmer_depth < likeliest_copynum_ubs[i]), 'likeliest_copynum'] = likeliest_copynums[i]
             lb = likeliest_copynum_ubs[i]
 
-        def get_copynum_stats_data(haploid_idx, wt, mean, sigma):
-            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, haploid_idx, copynum_lbs[haploid_idx], copynum_ubs[haploid_idx], wt, mean, sigma]
+        def get_copynum_stats_data(idx, wt, mean, sigma): # haploid copy number idx
+            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[m.floor(idx)], copynum_ubs[m.floor(idx)], wt, mean, sigma]
 
         def update_copynum_stats(copynum, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i):
             wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
@@ -463,7 +468,11 @@ for longest_seqs_mode1_copynum in [1, 2]:
             wt_prev, mean_prev, sigma_prev = get_component_params(1, components, result.params)
         if (len(components) > 2) and (components[2] is not None):
             wt_i, mean_i, sigma_i = get_component_params(2, components, result.params)
-        update_copynum_stats(1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
+        if args.half:
+            add_to_copynum_stats(get_copynum_stats_data(0.5, wt_prev, mean_prev, sigma_prev), COPYNUM_STATS_COLS, copynum_stats_hash)
+            add_to_copynum_stats(get_copynum_stats_data(1, wt_i, mean_i, sigma_i), COPYNUM_STATS_COLS, copynum_stats_hash)
+        else:
+            update_copynum_stats(1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
         for i in range(2, haploid_copynums_count - 1):
             wt_prev, mean_prev, sigma_prev = get_component_params(2 * i - 1, components, result.params)
             wt_i, mean_i, sigma_i = get_component_params(2 * i, components, result.params)
