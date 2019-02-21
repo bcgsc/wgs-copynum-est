@@ -1,18 +1,23 @@
+import argparse
 import csv
 import numpy as np
 import pandas as pd
 import re
 import sys
 
+description = "Compute summary statistics for copy number estimator. Outputs counts and scores for binary and non-binary classification (results collapsed into 1-many categorisation for the former)."
+argparser = argparse.ArgumentParser(description=description)
+argparser.add_argument("aln_est_counts", type=str, help="CSV file listing alignment counts and assignments for classified sequences")
+argparser.add_argument("counts_output_prefix", type=str,
+    help="Prefix for output CSV file summarising counts for binary alignment-assignment combinations. Non-binary equivalent suffixed with '_nb'.")
+argparser.add_argument("stats_output_prefix", type=str,
+    help="Prefix for output CSV file summarising classification performance scores for binary alignment-assignment combinations. Non-binary equivalent suffixed with '_nb'.")
+argparser.add_argument("output_dir", type=str, help="Directory to which output files should be written")
+args = argparser.parse_args()
+
 # counts of combinations of reference alignment # and estimated most likely copy #,
 # e.g. how many sequences have 1 reference alignment, and are estimated to occur 1, 2, ..., n+ times
-ALN_EST_COUNTS = sys.argv[1]
-COUNTS_FILE = sys.argv[2]
-NB_COUNTS_FILE = sys.argv[3] # non-binary: per-group figures
-STATS_FILE = sys.argv[4]
-NB_STATS_FILE = sys.argv[5]
-
-pre_aln_est_combos = pd.read_csv(ALN_EST_COUNTS)
+pre_aln_est_combos = pd.read_csv(args.aln_est_counts)
 aln_est_combos = pre_aln_est_combos[1:][pre_aln_est_combos.columns[pre_aln_est_combos.columns.map(lambda c: re.search('^\d+', c)).notnull()][1:]]
 aln_est_combos.rename(columns={k: v for (k, v) in list(map(lambda c: (c, int(re.search('^\d+', c)[0])), aln_est_combos.columns.tolist()))}, inplace=True)
 LABELS = aln_est_combos.columns.size + 1
@@ -39,13 +44,13 @@ for i in range(2, LABELS):
 
 many_to_one = est_counts[ONE_IDX] - aln_est_combos.loc[1, 1]
 
-with open(COUNTS_FILE, 'w') as csvfile:
+with open(args.counts_output_prefix + '.csv', 'w') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(['Aln.\Est.', 'One', 'Many', 'Total'])
     writer.writerow(['One', aln_est_combos.loc[1, 1], alnmt_counts[ONE_IDX] - aln_est_combos.loc[1, 1], alnmt_counts[ONE_IDX]])
     writer.writerow(['Many', many_to_one, alnmt_counts[MANY_IDX] - many_to_one, alnmt_counts[MANY_IDX]])
 
-with open(NB_COUNTS_FILE, 'w') as csvfile:
+with open(args.counts_output_prefix + '_nb.csv', 'w') as csvfile:
     writer = csv.writer(csvfile)
     cols = ['Aln.\Est.']
     cols.extend(map(lambda i: str(i), aln_est_combos.columns.values.tolist()))
@@ -62,7 +67,7 @@ with open(NB_COUNTS_FILE, 'w') as csvfile:
 # p0 = # actually +ve, p1 = # classified as +ve
 # Then p = c / p1, r = c / p0, and
 # F1 = 2 / (1/p + 1/r) = 2 / (p1/c + p0/c) = 2c / (p0 + p1)
-with open(STATS_FILE, 'w') as csvfile:
+with open(args.stats_output_prefix + '.csv', 'w') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(['TPR', 'FNR', 'TNR', 'FPR', 'PPV', 'FDR', 'F1'])
     tpr = aln_est_combos.loc[1, 1] * 1.0 / alnmt_counts[ONE_IDX]
@@ -74,7 +79,7 @@ with open(STATS_FILE, 'w') as csvfile:
         ppv = aln_est_combos.loc[1, 1] * 1.0 / est_counts[ONE_IDX]
     writer.writerow([tpr, 1.0 - tpr, 1.0 - fpr, fpr, ppv, 1.0 - ppv, 2.0 * aln_est_combos.loc[1, 1] / (alnmt_counts[ONE_IDX] + est_counts[ONE_IDX])])
 
-with open(NB_STATS_FILE, 'w') as csvfile:
+with open(args.stats_output_prefix + '_nb.csv', 'w') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(['Class \ Stat', 'TPR', 'FNR', 'PPV', 'FDR', 'F1'])
     rows = list(map(lambda i: [str(i)], range(LABELS)))
