@@ -1,12 +1,15 @@
+import argparse
 import csv
 import math as m
 import numpy as np
 import pandas as pd
 import sys
 
-EST_OUTPUT = sys.argv[1]
-EST_LEN_GP_STATS = sys.argv[2]
-BWA_PARSE_OUTPUT = sys.argv[3]
+argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy number estimator outputs for classified sequences")
+argparser.add_argument("est_output", type=str, help="CSV file listing sequence data and classifications")
+argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequence length groups used in classification, with summary statistics")
+argparser.add_argument("bwa_parse_output", type=str, help="BWA alignment output SAM file")
+args = argparser.parse_args()
 
 def count_and_write(max_components_est, seqs, cat=None):
   est_components = list(range(max_components_est + 1))
@@ -37,16 +40,16 @@ def count_and_write(max_components_est, seqs, cat=None):
     aln_est.to_csv('aln-est_counts.csv', header=header, index_label='Aln/Est')
 
 
-len_gp_est_component_counts = pd.read_csv(EST_LEN_GP_STATS)['Largest diploid copy # estimated'].apply(lambda i: m.ceil(i/2.0)).tolist()
+len_gp_est_component_counts = pd.read_csv(args.est_len_gp_stats)['Largest diploid copy # estimated'].apply(lambda i: m.ceil(i/2.0)).tolist()
 max_components_est = int(max(len_gp_est_component_counts))
 
-seqs = pd.read_csv(EST_OUTPUT)
+seqs = pd.read_csv(args.est_output)
 cols_from_to = { 'Length': 'length', 'Average k-mer depth': 'avg_depth', '1st Mode X': 'modex', 'GC %': 'GC', 'Estimation length group': 'len_gp', 'Likeliest copy #': 'copynum_est' }
 seqs.rename(columns=cols_from_to, inplace=True)
 seqs.set_index('ID', inplace=True)
 seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[gp])
 
-seq_alns = pd.read_csv(BWA_PARSE_OUTPUT, delimiter='\t')
+seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
 seq_alns.drop('GC content', axis=1, inplace=True)
 cols_from_to = { 'Mapped': 'aln_mapped', 'Matches': 'aln_match_count', 'Others': 'aln_other_count', 'Other CIGARs': 'aln_other_cigars', 'MAPQ (unique match only)': 'aln_mapq' }
 seq_alns.rename(columns=cols_from_to, inplace=True)
