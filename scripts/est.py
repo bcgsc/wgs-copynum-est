@@ -98,7 +98,7 @@ def compute_gaussian_density_at(x, diploid_idx, components, params):
     wt, mean, sigma = get_component_params(diploid_idx, components, params)
     return wt * stats.norm.pdf(x, mean, sigma)
 
-def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count, include_half):
+def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count, include_half, empirical_dens = None):
     lowest_is_1 = not(include_half)
     densities = [0] * haploid_copynums_count
     if components[1] is not None:
@@ -113,7 +113,11 @@ def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count, 
         densities[-1] = compute_gaussian_density_at(x, haploid_copynums_count * 2 - 3, components, params)
         if max_gaussian_copynums % 2 == 0:
             densities[-1] += compute_gaussian_density_at(x, haploid_copynums_count * 2 - 2, components, params)
-    return (np.argmax(densities) or 0.5)
+    maxdens_idx = np.argmax(densities)
+    if empirical_dens is not None:
+        if (densities[np.argmax(densities)] / empirical_dens) < 0.5:
+            return 0
+    return (maxdens_idx or 0.5)
 
 def compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i):
     wt_haploid_copynum = wt_prev + wt_i
@@ -434,11 +438,28 @@ for longest_seqs_mode1_copynum in [1, 2]:
         haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0) # bad naming: actually includes one extra for None or 0.5
         likeliest_copynums, likeliest_copynum_ubs = [], []
         copynum_lbs, copynum_ubs = [np.inf] * haploid_copynums_count, [np.inf] * haploid_copynums_count # 1st element is None or for haploid copy number 0.5 (diploid 1)
-        maxdens_idx = compute_likeliest_copynum_at(depths[0], components, result.params, haploid_copynums_count, args.half)
+        empirical_dens = get_density_for_idx(val_to_grid_idx(depths[0], grid_min, kde_grid_density), density)
+        maxdens_idx = compute_likeliest_copynum_at(depths[0], components, result.params, haploid_copynums_count, args.half, empirical_dens)
+        x, step = depths[0], 0.02
+        if maxdens_idx == 0:
+            while maxdens_idx == 0:
+                x += step
+                empirical_dens = get_density_for_idx(val_to_grid_idx(x, grid_min, kde_grid_density), density)
+                maxdens_idx = compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count, args.half, empirical_dens)
+            start = x + step
+        else:
+            while x >= grid_min:
+                x -= step
+                empirical_dens = get_density_for_idx(val_to_grid_idx(x, grid_min, kde_grid_density), density)
+                if compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count, args.half, empirical_dens) == 0:
+                    x += step
+                    break
+            start = depths[0] + step
+        likeliest_copynums.append(0)
+        likeliest_copynum_ubs.append(x)
         likeliest_copynums.append(maxdens_idx)
-        copynum_lbs[m.floor(maxdens_idx)] = 0
-        step = 0.02
-        for x in np.arange(depths[0] + step, depths[-1] + step, step):
+        copynum_lbs[m.floor(maxdens_idx)] = x
+        for x in np.arange(start, depths[-1] + step, step):
             maxdens_idx = compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count, args.half)
             if maxdens_idx != likeliest_copynums[-1]:
                 likeliest_copynum_ubs.append(x)
