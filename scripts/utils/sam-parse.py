@@ -1,10 +1,8 @@
+import argparse
 import csv
 import re
 import sys
 
-SAMFILE = sys.argv[1]
-OUTFILE = sys.argv[2]
-ERRORFILE = sys.argv[3]
 ID_COL = 0
 FLAGS_COL = 1
 MAPQ_COL = 4
@@ -55,12 +53,18 @@ def finalise(seq_dict, other_cigars):
     seq_dict['Other CIGARs'] = ','.join(other_cigars)
 
 
+argparser = argparse.ArgumentParser(description="Parse SAM file output by BWA-MEM alignment of sequences/unitigs in FASTA file to [mutated] reference")
+argparser.add_argument("samfilename", type=str, help="BWA-MEM output SAM file")
+argparser.add_argument("outfilename", type=str, help="File name for sequence/unitig reference alignment counts output")
+argparser.add_argument("errorfilename", type=str, help="Error log file name")
+args = argparser.parse_args()
+
 csv.field_size_limit(sys.maxsize)
 
-with open(SAMFILE, newline='') as samfile:
+with open(args.samfilename, newline='') as samfile:
     reader = csv.reader(samfile, delimiter='\t')
     error_seqs = []
-    with open(OUTFILE, 'w', newline='') as outfile:
+    with open(args.outfilename, 'w', newline='') as outfile:
         writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'Other CIGARs', 'MAPQ (unique match only)', 'GC content'])
         writer.writeheader()
         row = next(reader)
@@ -85,7 +89,7 @@ with open(SAMFILE, newline='') as samfile:
                     update_match_info(row, seq_dict, other_cigars)
         finalise(seq_dict, other_cigars)
         writer.writerow(seq_dict)
-    with open(ERRORFILE, 'w', newline='') as errorfile:
+    with open(args.errorfilename, 'w', newline='') as errorfile:
         writer = csv.writer(errorfile)
         for id in error_seqs:
             writer.writerow([id])
