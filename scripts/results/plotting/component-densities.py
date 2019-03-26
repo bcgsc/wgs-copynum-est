@@ -60,7 +60,7 @@ def compute_and_plot_kdes(seqs, title_suffix, filename_prefix):
   grid_min = (1 - MIN_OFFSET_FRACTION) * depths[0]
   grid_max = min(seqs.loc[seqs.likeliest_copynum == est_max,].mean_kmer_depth.mean() * 2, depths[-1]) + MAX_OFFSET
   kde_grid = np.linspace(grid_min, grid_max, 100 * (grid_max - grid_min) + 1) # can replace 100 by some other density
-  fig, ax = plt.subplots()
+  fig, ax = plt.subplots(figsize = (15, 10))
   plot_kdes(cpnums, ax, kde_grid, est_kdes, aln_kdes, kde_all, est_counts, aln_counts, len(depths))
   plt.legend()
   ax.set_title('Densities for estimated and true copy numbers, sequences ' + title_suffix)
