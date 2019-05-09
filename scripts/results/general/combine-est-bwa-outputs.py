@@ -52,12 +52,12 @@ seqs.set_index('ID', inplace=True)
 HALF = ((seqs.copynum_est == 0.5).sum() > 0)
 
 len_gp_stats = pd.read_csv(args.est_len_gp_stats)
-len_gp_est_component_counts = len_gp_stats['Largest diploid copy # estimated'].apply(lambda i: m.ceil(i/2.0) if (i > 1 or not(HALF)) else 0.5 if i == 0.5 else 0).tolist()
+len_gp_est_component_counts = len_gp_stats['Largest copy # estimated'].tolist()
 max_components_est = max(len_gp_est_component_counts)
 if max_components_est > 0.5:
   max_components_est = int(max_components_est)
 
-seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[gp])
+seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[m.floor(gp)])
 
 seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
 seq_alns.drop('GC content', axis=1, inplace=True)
@@ -65,7 +65,7 @@ cols_from_to = { 'Mapped': 'aln_mapped', 'Matches': 'aln_match_count', 'Others':
 seq_alns.rename(columns=cols_from_to, inplace=True)
 seq_alns.set_index('ID', inplace=True)
 
-seq_alns['aln_match_count'] = seq_alns.aln_match_count.apply(lambda i: m.ceil(i/2.0) if (i > 1 or not(HALF)) else 0.5 if i == 1 else 0)
+seq_alns['aln_match_count'] = seq_alns.aln_match_count.apply(lambda i: m.ceil(i/2.0) if (i > 1 or not(HALF)) else 0.5 if i == 1 else 0) # alnmt counts still diploid
 seqs = seqs.join(seq_alns)
 seqs.loc[seqs.aln_match_count.isna(), 'aln_match_count'] = 0
 seqs.sort_values(by=['length', 'avg_depth'], inplace=True)
