@@ -233,8 +233,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
         # condition mostly to exclude cases without perceptible error distribution, i.e. most cases, except small genomes
         if min_density_depth_idx_1 > 0 and np.mean(density[:min_density_depth_idx_1]) > density[min_density_depth_idx_1]:
             depths = depths[min_density_depth_idx_1:]
-
-        # TODO: Remove preceding blank line
         depths = depths[depths <= depth_max_pctl]
 
         mode_idx = min_density_depth_idx_1 + np.argmax(density[min_density_depth_idx_1:])
@@ -251,12 +249,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
             sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode, depths[0])) / mode1_copynum
         else:
             sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[(len_gp_idx + 1):])
-
-        # TODO: rm blank line
         if sigma < sigma_min:
             sigma_min = NONNEG_CONSTANT
-
-        # TODO: rm blank line
         sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
         sigma_sqrt_2pi_reciprocal = 1 / sigma_sqrt_2pi
 
@@ -325,8 +319,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
                     i += 2
                 else:
                     break
-
-        # TODO: rm blank line
         max_gaussian_copynums = max(1, int(depths[-1] > mode * 2) * i)
 
         params = Parameters()
@@ -413,8 +405,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
             lb = lb_pts[diffs >= 0][diffs[diffs >= 0].argmin()]
         else:
             lb = depths[0]
-
-        # TODO: rm blank line
         ub = lb + step * (1 + m.ceil((depths[-1] - lb) / step))
 
         lmfit_range = np.arange(lb, ub, step)
