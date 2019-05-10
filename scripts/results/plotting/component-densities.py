@@ -13,6 +13,7 @@ import sys
 argparser = argparse.ArgumentParser(description='Plot aligned and estimated copy-number component densities by sequence mean k-mer depth')
 argparser.add_argument('seq_est_aln_file', type=str, help='CSV file listing sequences with aligned and estimated copy numbers')
 argparser.add_argument('plots_file_prefix', type=str, help='Prefix for output plot file names')
+argparser.add_argument('est_len_gp_stats', type=str, nargs='?', default=None, help='CSV file listing sequence length groups used in classification, with summary statistics')
 args = argparser.parse_args()
 
 def kde_and_count_copynum(vals, c, kdes, counts):
@@ -82,8 +83,11 @@ COLOURS = [ 'xkcd:azure', 'xkcd:coral', 'xkcd:darkgreen', 'xkcd:gold', 'xkcd:plu
 
 compute_and_plot_kdes(all_seqs, 'of all lengths', args.plots_file_prefix)
 
-lb = 0
-for ub in [100, 1000, 10000, np.Inf]:
+lb, ubs = 0, [100, 1000, 10000, np.Inf]
+if args.est_len_gp_stats is not None:
+  len_gp_stats = pd.read_csv(args.est_len_gp_stats)
+  lb, ubs = len_gp_stats.loc[0, 'Min. len.'], len_gp_stats['Max. len.']
+for ub in ubs:
   seqs = all_seqs.loc[(all_seqs.length >= lb) & (all_seqs.length < ub),]
   if seqs.shape[0] > 0:
     compute_and_plot_kdes(seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lt' + str(ub))

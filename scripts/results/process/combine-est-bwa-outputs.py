@@ -6,6 +6,7 @@ import pandas as pd
 import sys
 
 argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy number estimator outputs for classified sequences")
+argparser.add_argument('--use_est_len_gps', action="store_true", help='Divide sequences by length groups used in estimation')
 argparser.add_argument("est_output", type=str, help="CSV file listing sequence data and classifications")
 argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequence length groups used in classification, with summary statistics")
 argparser.add_argument("bwa_parse_output", type=str, help="BWA alignment output SAM file")
@@ -55,7 +56,8 @@ seqs.rename(columns=cols_from_to, inplace=True)
 seqs.set_index('ID', inplace=True)
 HALF = ((seqs.copynum_est == 0.5).sum() > 0)
 
-len_gp_est_component_counts = pd.read_csv(args.est_len_gp_stats)['Largest diploid copy # estimated'].apply(lambda i: m.ceil(i/2.0) if (i > 1 or not(HALF)) else 0.5 if i == 0.5 else 0).tolist()
+len_gp_stats = pd.read_csv(args.est_len_gp_stats)
+len_gp_est_component_counts = len_gp_stats['Largest diploid copy # estimated'].apply(lambda i: m.ceil(i/2.0) if (i > 1 or not(HALF)) else 0.5 if i == 0.5 else 0).tolist()
 max_components_est = max(len_gp_est_component_counts)
 if max_components_est > 0.5:
   max_components_est = int(max_components_est)
@@ -80,6 +82,12 @@ seqs.loc[:, write_cols].to_csv('seq-est-and-aln.csv', header=header, index_label
 mins = [0, 100, 1000, 10000]
 ubs = [100, 1000, 10000, np.inf]
 count_files = ['aln-est_counts_lt100.csv', 'aln-est_counts_lt1000.csv', 'aln-est_counts_lt10000.csv', 'aln-est_counts_gte10000.csv']
+if args.use_est_len_gps:
+  mins = len_gp_stats['Min. len.']
+  ubs = len_gp_stats['Max. len.']
+  count_files = ['aln-est_counts_'] * len_gp_stats.shape[0]
+  for i in range(len_gp_stats.shape[0]):
+    count_files[i] = count_files[i] + str(i) + '.csv'
 
 for cat in range(len(mins)):
   count_and_write(max_components_est, seqs, TOTAL_SEQUENCES, cat)
