@@ -96,7 +96,7 @@ $ mkdir results/<date>
 3. Create folder for specific estimator version results and file describing version details; run estimator, which writes to output files in <output_dir>
 $ mkdir results/<output_dir>
 $ vim results/<output_dir>/meta.txt
-$ python <HOME>/scripts/est.py abyss-out/<unitigs_fasta> <k> results/<output_dir>
+$ python <HOME>/scripts/est.py [--half] abyss-out/<unitigs_fasta> <k> results/<output_dir>
 
 Combine estimation and reference alignment data; output goes to <seq_aln_and_est>, and <aln_est_counts> and <aln_est_ranks> files
 $ cd results/<output_dir>/
