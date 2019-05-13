@@ -1,6 +1,7 @@
 import matplotlib
 matplotlib.use('agg')
 
+import argparse
 import matplotlib.pyplot as plt
 import math as m
 import numpy as np
@@ -9,8 +10,10 @@ import statsmodels.api as sm
 import sys
 
 
-SEQ_EST_ALN_FILE = sys.argv[1]
-PLOTS_FILE_PREFIX = sys.argv[2]
+argparser = argparse.ArgumentParser(description='Plot aligned and estimated copy-number component densities by sequence mean k-mer depth')
+argparser.add_argument('seq_est_aln_file', type=str, help='CSV file listing sequences with aligned and estimated copy numbers')
+argparser.add_argument('plots_file_prefix', type=str, help='Prefix for output plot file names')
+args = argparser.parse_args()
 
 def kde_and_count_copynum(vals, c, kdes, counts):
   if len(vals) > 0:
@@ -67,7 +70,7 @@ def compute_and_plot_kdes(seqs, title_suffix, filename_prefix):
   fig.savefig(filename_prefix + '.png')
 
 
-all_seqs = pd.read_csv(SEQ_EST_ALN_FILE)
+all_seqs = pd.read_csv(args.seq_est_aln_file)
 all_seqs.rename(index=str, inplace=True,
     columns = { 'Length': 'length', 'Average depth': 'mean_kmer_depth', 'GC %': 'GC', 'Likeliest copy #': 'likeliest_copynum',
                 'Alignments (alns)': 'alns', 'Other alns': 'other_alns', 'Other-aln CIGARs': 'other_aln_cigars', 'MAPQ (unique aln only)': 'unique_aln_mapq' })
@@ -77,10 +80,11 @@ HALF = ((all_seqs.likeliest_copynum == 0.5).sum() > 0)
 MAX_INT_COPYNUM = 8 + int(not(HALF))
 COLOURS = [ 'xkcd:azure', 'xkcd:coral', 'xkcd:darkgreen', 'xkcd:gold', 'xkcd:plum', 'xkcd:darkblue', 'xkcd:olive', 'xkcd:magenta', 'xkcd:chocolate', 'xkcd:yellowgreen' ]
 
-compute_and_plot_kdes(all_seqs, 'of all lengths', PLOTS_FILE_PREFIX)
+compute_and_plot_kdes(all_seqs, 'of all lengths', args.plots_file_prefix)
+
 lb = 0
 for ub in [100, 1000, 10000, np.Inf]:
   seqs = all_seqs.loc[(all_seqs.length >= lb) & (all_seqs.length < ub),]
   if seqs.shape[0] > 0:
-    compute_and_plot_kdes(seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', PLOTS_FILE_PREFIX + '_len-gte' + str(lb) + 'lt' + str(ub))
+    compute_and_plot_kdes(seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lt' + str(ub))
   lb = ub
