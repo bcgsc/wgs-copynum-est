@@ -24,7 +24,7 @@ def count_and_write(max_components_est, seqs, total_seqs, cat=None):
   aln_est = pd.DataFrame(None, index=est_components, columns=cols)
   total = 0
   if cat is not None:
-    seqs = seqs[(seqs.length >= mins[cat]) & (seqs.length < ubs[cat])]
+    seqs = seqs[(seqs.length >= mins[cat]) & (seqs.length <= maxs[cat])]
   for i in est_components:
     count = 0
     for j in est_components:
@@ -80,11 +80,11 @@ header = ['Length', 'Average depth', 'GC %', 'Likeliest copy #', 'Alignments (al
 seqs.loc[:, write_cols].to_csv('seq-est-and-aln.csv', header=header, index_label='ID')
 
 mins = [0, 100, 1000, 10000]
-ubs = [100, 1000, 10000, np.inf]
+maxs = [99, 999, 9999, np.inf]
 count_files = ['aln-est_counts_lt100.csv', 'aln-est_counts_lt1000.csv', 'aln-est_counts_lt10000.csv', 'aln-est_counts_gte10000.csv']
 if args.use_est_len_gps:
   mins = len_gp_stats['Min. len.']
-  ubs = len_gp_stats['Max. len.']
+  maxs = len_gp_stats['Max. len.']
   count_files = ['aln-est_counts_'] * len_gp_stats.shape[0]
   for i in range(len_gp_stats.shape[0]):
     count_files[i] = count_files[i] + str(i) + '.csv'

@@ -121,16 +121,16 @@ COLOURS = [ 'xkcd:azure', 'xkcd:coral', 'xkcd:darkgreen', 'xkcd:gold', 'xkcd:plu
 if args.copynum_stats_file is None:
   compute_and_plot_kdes(all_seqs, 'of all lengths', args.plots_file_prefix)
 
-lbs, ubs = [0, 100, 1000, 10000], [100, 1000, 10000, np.Inf]
+lbs, ubs = [0, 100, 1000, 10000], [99, 999, 9999, np.Inf]
 if args.est_len_gp_stats is not None:
   len_gp_stats = pd.read_csv(args.est_len_gp_stats)
   lbs, ubs = len_gp_stats['Min. len.'], len_gp_stats['Max. len.']
 for i in range(len(ubs)):
   lb, ub = lbs[i], ubs[i]
-  seqs = all_seqs.loc[(all_seqs.length >= lb) & (all_seqs.length < ub),]
+  seqs = all_seqs.loc[(all_seqs.length >= lb) & (all_seqs.length <= ub),]
   if seqs.shape[0] > 0:
     if args.copynum_stats_file is not None:
       curr_components = all_components.loc[(all_components.group_min_len == lb) & (all_components.group_max_len == ub),] # TODO: fix +1
-      compute_and_plot_population_densities(curr_components, seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lt' + str(ub))
+      compute_and_plot_population_densities(curr_components, seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lte' + str(ub))
     else:
-      compute_and_plot_kdes(seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lt' + str(ub))
+      compute_and_plot_kdes(seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lte' + str(ub))
