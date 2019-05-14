@@ -91,11 +91,11 @@ def guess_next_sigma(length_median, length_medians, sigmas):
 def get_component_params(diploid_idx, components, params):
     prefix = components[diploid_idx].prefix
     if re.match('gauss', prefix):
-        return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value)
-    return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value))
+        return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value, None, None, None)
+    return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value), params['gamma_loc'].value, params['gamma_shape'].value, params['gamma_scale'].value)
 
 def compute_gaussian_density_at(x, diploid_idx, components, params):
-    wt, mean, sigma = get_component_params(diploid_idx, components, params)
+    wt, mean, sigma = get_component_params(diploid_idx, components, params)[:3]
     return wt * stats.norm.pdf(x, mean, sigma)
 
 def compute_likeliest_copynum_at(x, components, params, haploid_copynums_count, include_half, empirical_dens = None):
@@ -177,7 +177,7 @@ length_gp_medians = list(map(lambda gp: gp.len.median(), length_gps_for_est))
 
 LEN_GP_STATS_COLS = ['count', 'min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'min_copynum', 'max_copynum_est']
 len_gp_stats = [None]
-COPYNUM_STATS_COLS = ['len_gp_id', 'len_gp_min_len', 'len_gp_max_len', 'copynum', 'depth_lb', 'depth_max', 'weight', 'depth_mean', 'depth_stdev']
+COPYNUM_STATS_COLS = ['len_gp_id', 'len_gp_min_len', 'len_gp_max_len', 'copynum', 'depth_lb', 'depth_max', 'weight', 'depth_mean', 'depth_stdev', 'depth_loc', 'depth_shape', 'depth_scale']
 copynum_stats = [None]
 
 # Fit under assumption that first peak of density curve for longest sequences corresponds to mode of copy-number 1 or 2 (unique homozygous) sequences
@@ -470,35 +470,35 @@ for longest_seqs_mode1_copynum in [1, 2]:
             seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= lb) & (seqs.mean_kmer_depth < likeliest_copynum_ubs[i]), 'likeliest_copynum'] = likeliest_copynums[i]
             lb = likeliest_copynum_ubs[i]
 
-        def get_copynum_stats_data(idx, wt, mean, sigma): # haploid copy number idx
-            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[m.floor(idx)], copynum_ubs[m.floor(idx)], wt, mean, sigma]
+        def get_copynum_stats_data(idx, wt, mean, sigma, loc = None, shape = None, scale = None): # haploid copy number idx
+            return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[m.floor(idx)], copynum_ubs[m.floor(idx)], wt, mean, sigma, loc, shape, scale]
 
-        def update_copynum_stats(copynum, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i):
+        def update_copynum_stats(copynum, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i, loc = None, shape = None, scale = None):
             wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum = compute_haploid_copynum_stats(wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
-            copynum_stats_data = get_copynum_stats_data(copynum, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum)
+            copynum_stats_data = get_copynum_stats_data(copynum, wt_haploid_copynum, mean_haploid_copynum, sigma_haploid_copynum, loc, shape, scale)
             add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
 
         wt_prev, mean_prev, sigma_prev = 0, 0, 0
         wt_i, mean_i, sigma_i = 0, 0, 0
         if components[1] is not None:
-            wt_prev, mean_prev, sigma_prev = get_component_params(1, components, result.params)
+            wt_prev, mean_prev, sigma_prev = get_component_params(1, components, result.params)[:3]
         if (len(components) > 2) and (components[2] is not None): # 2nd condition should never be needed in practice, as long as algorithm doesn't allow empty component beyond diploid cp#1
-            wt_i, mean_i, sigma_i = get_component_params(2, components, result.params)
+            wt_i, mean_i, sigma_i = get_component_params(2, components, result.params)[:3]
         if args.half:
             add_to_copynum_stats(get_copynum_stats_data(0.5, wt_prev, mean_prev, sigma_prev), COPYNUM_STATS_COLS, copynum_stats_hash)
             add_to_copynum_stats(get_copynum_stats_data(1, wt_i, mean_i, sigma_i), COPYNUM_STATS_COLS, copynum_stats_hash)
         else:
             update_copynum_stats(1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
         for i in range(2, haploid_copynums_count - 1):
-            wt_prev, mean_prev, sigma_prev = get_component_params(2 * i - 1, components, result.params)
-            wt_i, mean_i, sigma_i = get_component_params(2 * i, components, result.params)
+            wt_prev, mean_prev, sigma_prev = get_component_params(2 * i - 1, components, result.params)[:3]
+            wt_i, mean_i, sigma_i = get_component_params(2 * i, components, result.params)[:3]
             update_copynum_stats(i, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
         if haploid_copynums_count > 2:
-            wt_prev, mean_prev, sigma_prev = get_component_params(2 * haploid_copynums_count - 3, components, result.params)
+            wt_prev, mean_prev, sigma_prev, loc, shape, scale = get_component_params(2 * haploid_copynums_count - 3, components, result.params)
             wt_i, mean_i, sigma_i = 0, 0, 0
             if len(components) % 2 == 1: # even number of Gaussian-estimated diploid copy number components
-                wt_i, mean_i, sigma_i = get_component_params(2 * haploid_copynums_count - 2, components, result.params)
-            update_copynum_stats(haploid_copynums_count - 1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i)
+                wt_i, mean_i, sigma_i = get_component_params(2 * haploid_copynums_count - 2, components, result.params)[:3]
+            update_copynum_stats(haploid_copynums_count - 1, wt_prev, mean_prev, sigma_prev, wt_i, mean_i, sigma_i, loc, shape, scale)
 
         log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
         log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
@@ -529,6 +529,7 @@ LEN_GP_STATS_OUTPUT_COLS = tuple(['count', 'min_len', 'max_len', 'max_depth', 'm
 LEN_GP_STATS_OUTPUT_HEADER = ['Number of sequences', 'Min. len.', 'Max. len.', 'Max. depth', 'Max. depth in estimation', 'Smallest diploid copy # present', 'Largest diploid copy # estimated']
 len_gp_stats[better_fit_model].to_csv(args.output_dir + '/length_gp_stats.csv', columns=LEN_GP_STATS_OUTPUT_COLS, header=LEN_GP_STATS_OUTPUT_HEADER, index_label='ID')
 
-COPYNUM_STATS_OUTPUT_HEADER = ['Group #', 'Group min. len.', 'Group max. len.', 'Component #', 'Component depth lower bound', 'Component max. depth', 'Weight', 'Mean', 'Std. deviation']
-copynum_stats[better_fit_model].to_csv(args.output_dir + '/copynumber_params.csv', header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
+COPYNUM_STATS_OUTPUT_HEADER = ['Group #', 'Group min. len.', 'Group max. len.', 'Component #', 'Component depth lower bound', 'Component max. depth',
+                               'Weight', 'Mean', 'Std. deviation', 'Location', 'Shape', 'Scale']
+copynum_stats[m.floor(better_fit_model)].to_csv(args.output_dir + '/copynumber_params.csv', header=COPYNUM_STATS_OUTPUT_HEADER, index=False)
 
