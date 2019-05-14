@@ -425,7 +425,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         # Compute likeliest (haploid) copy number bounds: most robust method; computing density function intersections entails too many edge cases
         # Have both likeliest_copynum_ubs and copynum_ubs because one copy number could in principle be the most probable over multiple ranges, but
         # it's easier to just record the first (primary) in copynum_ubs, which is for reporting purposes (while likeliest_copynum_ubs is for assignment)
-        haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0) # bad naming: actually includes one extra for None or 0.5
+        haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0) # Misnomer: actually includes one extra for None or 0.5
         likeliest_copynums, likeliest_copynum_ubs = [], []
         copynum_lbs, copynum_ubs = [np.inf] * haploid_copynums_count, [np.inf] * haploid_copynums_count # 1st element is None or for haploid copy number 0.5 (diploid 1)
         empirical_dens = get_density_for_idx(val_to_grid_idx(depths[0], grid_min, kde_grid_density), density)
