@@ -129,7 +129,7 @@ for i in range(len(ubs)):
   lb, ub = lbs[i], ubs[i]
   seqs = all_seqs.loc[(all_seqs.length >= lb) & (all_seqs.length <= ub),]
   if seqs.shape[0] > 0:
-    if args.copynum_stats_file is not None:
+    if (args.est_len_gp_stats is not None) and (args.copynum_stats_file is not None): # The latter needs the former to make sense (be defined)
       curr_components = all_components.loc[(all_components.group_min_len == lb) & (all_components.group_max_len == ub),] # TODO: fix +1
       compute_and_plot_population_densities(curr_components, seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')', args.plots_file_prefix + '_len-gte' + str(lb) + 'lte' + str(ub))
     else:
