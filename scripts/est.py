@@ -270,10 +270,14 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             cdf_at_modes.append(density_ECDF([i * mode])[0])
         use_gamma = False
         if len(density_at_modes) > 2:
+            copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
+            gamma_min_density_ratio = 0.65 + min(copynums_in_90thpctl_mode_diff / 40, 1) * 0.2
+            len_group_mode_pctl_rank = stats.percentileofscore(depths, len_group_mode)
+            gamma_min_cdf = (len_group_mode_pctl_rank + ((90.0 - len_group_mode_pctl_rank) / m.pow(copynums_in_90thpctl_mode_diff, 1/3))) / 100.0
             density_ratio = density_at_modes[-1] / density_at_modes[-2]
             while (cdf_at_modes[-1] < 0.95) and (density_ratio > 0.1):
                 i += 1
-                if (cdf_at_modes[-1] > 0.55) and (density_ratio > 0.7):
+                if (cdf_at_modes[-1] > gamma_min_cdf) and (density_ratio > gamma_min_density_ratio):
                     use_gamma = True
                     break
                 density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
