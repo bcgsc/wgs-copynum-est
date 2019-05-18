@@ -264,12 +264,13 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             density_at_modes.append(get_density_for_idx(val_to_grid_idx(mode, kde_grid_density, grid_min), density))
             cdf_at_modes.append(density_ECDF([mode])[0])
         # min(x1, x2): see notes with illustration
-        modes_in_depths = int(depths[-1] * 1.0 / mode)
-        for i in np.arange(2.0, min(round((len_group_mode * 1.0 / mode) + 2.5), modes_in_depths - int(density_ECDF([modes_in_depths * mode])[0] > 0.975))):
-            density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
-            cdf_at_modes.append(density_ECDF([i * mode])[0])
+        i, modes_in_depths = 2, round(depths[-1] * 1.0 / mode)
+        for i in np.arange(2.0, min(round((len_group_mode * 1.0 / mode) + 2.5), modes_in_depths + 1 - int(density_ECDF([(modes_in_depths - 0.5) * mode])[0] > 0.99))):
+            if i * mode <= depths[-1]:
+                density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
+                cdf_at_modes.append(density_ECDF([i * mode])[0])
         use_gamma = False
-        if len(density_at_modes) > 2:
+        if ((i + 1) * mode <= depths[-1]) and (len(density_at_modes) > 2):
             copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
             gamma_min_density_ratio = 0.65 + min(copynums_in_90thpctl_mode_diff / 40, 1) * 0.2
             len_group_mode_pctl_rank = stats.percentileofscore(depths, len_group_mode)
