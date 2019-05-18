@@ -286,16 +286,13 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
                 density_ratio = density_at_modes[-1] / density_at_modes[-2]
 
         # Estimate component weights
-        if len(density_at_modes) < 3:
-            component_weights = np.array(density_at_modes) / sum(density_at_modes)
+        if use_gamma:
+            gamma_prob = 2.0 * (1 - cdf_at_modes[-1]) / 3
+            component_weights = np.zeros(len(density_at_modes))
+            component_weights[:-1] = np.array(density_at_modes[:-1]) * (1 - gamma_prob) / sum(density_at_modes[:-1])
+            component_weights[-1] = gamma_prob
         else:
-            if use_gamma:
-                gamma_prob = 2.0 * (1 - cdf_at_modes[-1]) / 3
-                component_weights = np.zeros(len(density_at_modes))
-                component_weights[:-1] = np.array(density_at_modes[:-1]) * (1 - gamma_prob) / sum(density_at_modes[:-1])
-                component_weights[-1] = gamma_prob
-            else:
-                component_weights = np.array(density_at_modes[:-1]) / sum(density_at_modes[:-1])
+            component_weights = np.array(density_at_modes) / sum(density_at_modes)
 
         smallest_copynum = 0.5
         if component_weights[0] == 0:
