@@ -332,26 +332,14 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             j = len(density_at_modes) - 1
             curr_mode = j * mode
             tail_stats = stats.describe(depths[depths > curr_mode])
-            # Rough guesses (likely overestimates) for starting parameter values.
-            # Widen/narrow range for loc beyond/within that suggested by lim_j to allow for error in estimating lim_j, and to constrain loc to relatively reasonable/realistic values.
-            lim_j = curr_mode - (4.5 * j * sigma)
-            if lim_j <= 0:
-                maxloc = lim_j
-                while maxloc <= 0:
-                    maxloc += 0.5 * j * sigma
-                params['gamma_loc'].set(value = lim_j, min = 2 * lim_j, max = maxloc) # max would have been 0
-            else:
-                # could have left min out, but it sometimes gets too negative (and lim_j could be incorrect, as commented on above)
-                params['gamma_loc'].set(value = lim_j, min = -2 * lim_j, max = lim_j + (0.5 * j * sigma))
-            pre = 0.5 * depths[(depths > (j-1) * mode) & (depths <= curr_mode)].size
-            post = depths[depths > curr_mode].size
-            pre_fraction = pre * 1.0 / (pre + post)
-            mean_start = pre_fraction * curr_mode + (1 - pre_fraction) * tail_stats.mean
-            params['gamma_mode'] = Parameter(value = (mean_start + curr_mode) / 2.0, min = curr_mode) # avoid starting at or very near boundary
-            params['gamma_mean'] = Parameter(value = mean_start, min = curr_mode + NONNEG_CONSTANT)
-            params['gamma_scale'].set(expr = 'gamma_mean - gamma_mode', min = NONNEG_CONSTANT)
-            params['gamma_shape'].set(expr = '1 + (gamma_mode - gamma_loc) / gamma_scale') # for this to work, must have mode > loc, which is effectively guaranteed
-            params['gamma_variance'] = Parameter(expr = 'gamma_shape * (gamma_scale ** 2)')
+            params['gamma_mode'] = Parameter(value = curr_mode + mode, min = j * (1 - mode_error - NONNEG_CONSTANT) * mode, max = tail_stats.mean) # avoid starting too near boundary
+            params['gamma_shape'].set(value = tail_stats.mean * 1.0 / (tail_stats.mean - curr_mode), min = 1 + (mode * 1.0) / (depths[-1] - curr_mode))
+            params['gamma_scale'].set(value = tail_stats.mean - curr_mode, min = NONNEG_CONSTANT, max = depths[-1] - curr_mode)
+            params['gamma_mean'] = Parameter(expr = 'gamma_mode + gamma_scale')
+            params['gamma_loc'].set(expr = 'gamma_mean - gamma_shape * gamma_scale', min = -1.0 * curr_mode, max = (j - 1) * (1 - mode_error) * mode) # 9 = 2 * 4.5
+            params['gamma_variance'] = Parameter(expr = 'gamma_shape * (gamma_scale ** 2)', min = sigma ** 2, max = stats.describe(depths).variance)
+            pre_obs = depths[(depths > (j-1) * mode) & (depths <= curr_mode)]
+            pre, post = 0.5 * pre_obs.size, depths[depths > curr_mode].size
             gamma_weight_model = ConstantModel(prefix='gamma_wt_')
             gamma_weight_model.set_param_hint('c', value = max(component_weights[m.floor(max_gaussian_copynums)], (pre + post) * 1.0 / depths.size), min=NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
             params.update(gamma_weight_model.make_params())
