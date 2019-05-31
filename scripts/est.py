@@ -251,8 +251,6 @@ for longest_seqs_mode1_copynum in [1, 2]:
             sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[(len_gp_idx + 1):])
         if sigma < sigma_min:
             sigma_min = NONNEG_CONSTANT
-        sigma_sqrt_2pi = m.sqrt(2 * m.pi) * sigma
-        sigma_sqrt_2pi_reciprocal = 1 / sigma_sqrt_2pi
 
         # Estimate copy-number component weights starting at means of cp#s 1 & 2, using heuristic of 2x cp#1 density (for the sum of all non-cp#2 densities) at cp#2 mean
         component_weights = [np.nan] * (2 + int(depths[-1] > mode * 2))
