@@ -49,14 +49,69 @@ def get_length_gps_for_est(seqs, len_percentiles_uniq, bin_minsize):
     length_gps.reverse()
     return length_gps
 
+def get_kdes(depths, grid_min, grid_max, kde_grid_density):
+    kde = sm.nonparametric.KDEUnivariate(depths)
+    kde.fit(bw=np.percentile(depths, 50) * 0.04) # median/25: seems like a decent heuristic
+    return kde.evaluate(np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, kde_grid_density, grid_min) + 1))
+
+def set_curr_len_gp_stats(curr_len_gp_stats, curr_len_gp_seqs, depth_max_pctl, depth_max_pctl_rank):
+    curr_len_gp_stats['count'] = curr_len_gp_seqs.shape[0]
+    curr_len_gp_stats['min_len'] = curr_len_gp_seqs.len.min()
+    curr_len_gp_stats['max_len'] = curr_len_gp_seqs.len.max()
+    curr_len_gp_stats['max_depth'] = curr_len_gp_seqs.mean_kmer_depth.max()
+    curr_len_gp_stats['max_depth_in_est'] = depth_max_pctl
+    curr_len_gp_stats['max_depth_pctl_rank_in_est'] = depth_max_pctl_rank
+    return curr_len_gp_stats
+
 def val_to_grid_idx(val, grid_density, minval):
     return (grid_density * (val - minval))
+
+def get_min_density_depth_candidate(depths, density, grid_min, kde_grid_density):
+    # hopefully universally effective heuristic to avoid inappropriately applying to very narrow depth distributions
+    # location of min., if any, between error distribution and mode not likely to be lower than this; and if it is, hopefully little harm done being off by < 1
+    if depths[0] + 1 < np.percentile(depths, 10):
+        soft_lb_idx = m.ceil(val_to_grid_idx(depths[0] + 1, kde_grid_density, grid_min))
+        return (soft_lb_idx + np.argmin(density[soft_lb_idx:m.floor(val_to_grid_idx(np.percentile(depths, 20), kde_grid_density, grid_min))]))
+    return 0
+
+def truncate_depths(depths, min_density_depth_candidate, density, depth_max_pctl):
+    # condition mostly to exclude cases without perceptible error distribution, i.e. most cases, except small genomes
+    if min_density_depth_candidate > 0 and np.mean(density[:min_density_depth_candidate]) > density[min_density_depth_candidate]:
+        depths = depths[min_density_depth_candidate:]
+    return depths[depths <= depth_max_pctl]
 
 def grid_idx_to_val(idx, grid_density, minval):
     return ((idx / grid_density) + minval)
 
+def get_len_group_mode(min_density_depth_candidate, density, grid_min, kde_grid_density):
+    mode_idx = min_density_depth_candidate + np.argmax(density[min_density_depth_candidate:])
+    return grid_idx_to_val(mode_idx, kde_grid_density, grid_min)
+
 def get_approx_component_obs(data, mode, half, data_min): # assumes symmetric distribution
     return data[(data >= max(data_min, mode - half)) & (data <= mode + half)]
+
+def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, density_ECDF):
+    if (0.5 * mode) <= depths[0]:
+        density_at_modes, cdf_at_modes = [0], [0]
+    else:
+        density_at_modes, cdf_at_modes = [get_density_for_idx(val_to_grid_idx(0.5 * mode, kde_grid_density, grid_min), density)], [density_ECDF([0.5 * mode])[0]]
+    if mode < depths[-1]:
+        density_at_modes.append(get_density_for_idx(val_to_grid_idx(mode, kde_grid_density, grid_min), density))
+        cdf_at_modes.append(density_ECDF([mode])[0])
+    # min(x1, x2): see notes with illustration
+    i, modes_in_depths = 2, round(depths[-1] * 1.0 / mode)
+    for i in np.arange(2.0, min(round((len_group_mode * 1.0 / mode) + 2.5), modes_in_depths + 1 - int(density_ECDF([(modes_in_depths - 0.5) * mode])[0] > 0.99))):
+        if i * mode <= depths[-1]:
+            density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
+            cdf_at_modes.append(density_ECDF([i * mode])[0])
+    return (density_at_modes, cdf_at_modes)
+
+def get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff):
+    return (0.65 + min(copynums_in_90thpctl_mode_diff / 40, 1) * 0.2)
+
+def get_gamma_min_cdf(copynums_in_90thpctl_mode_diff):
+    len_group_mode_pctl_rank = stats.percentileofscore(depths, len_group_mode)
+    return ((len_group_mode_pctl_rank + ((90.0 - len_group_mode_pctl_rank) / m.pow(copynums_in_90thpctl_mode_diff, 1/3))) / 100.0)
 
 def get_density_for_idx(idx, density):
     return (density[m.floor(idx)] + (idx - m.floor(idx)) * (density[m.ceil(idx)] - density[m.floor(idx)]))
@@ -71,12 +126,8 @@ def get_component_weights(density_at_modes, cdf_at_modes, use_gamma):
         component_weights = np.array(density_at_modes) / sum(density_at_modes)
     return component_weights
 
-def get_smallest_copynum(component_weights):
-    if component_weights[0] == 0:
-        if component_weights[1] == 0:
-            error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
-            error_msg += 'none are single-copy (either homo- or heterozygous)!'
-            raise RuntimeError(error_msg)
+def get_smallest_copynum(components):
+    if components[0] is None:
         return 1
     return 0.5
 
@@ -122,6 +173,59 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
 def init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums):
     copynum_components = init_dummy_model()
     return init_gaussians([], component_weights, copynum_components, init_params(copynum_components), param_guesses, smallest_copynum, max_gaussian_copynums)
+
+def init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error):
+    gamma_model = Model(gamma, prefix='gamma_')
+    components.append(gamma_model)
+    params.update(gamma_model.make_params())
+    j = len(components) - 1
+    curr_mode = j * mode
+    tail_stats = stats.describe(depths[depths > curr_mode])
+    params['gamma_mode'] = Parameter(value = curr_mode + mode, min = j * (1 - mode_error - NONNEG_CONSTANT) * mode, max = tail_stats.mean) # avoid starting too near boundary
+    params['gamma_shape'].set(value = tail_stats.mean * 1.0 / (tail_stats.mean - curr_mode), min = 1 + (mode * 1.0) / (depths[-1] - curr_mode))
+    params['gamma_scale'].set(value = tail_stats.mean - curr_mode, min = NONNEG_CONSTANT, max = depths[-1] - curr_mode)
+    params['gamma_mean'] = Parameter(expr = 'gamma_mode + gamma_scale')
+    params['gamma_loc'].set(expr = 'gamma_mean - gamma_shape * gamma_scale', min = -1.0 * curr_mode, max = (j - 1) * (1 - mode_error) * mode) # 9 = 2 * 4.5
+    params['gamma_variance'] = Parameter(expr = 'gamma_shape * (gamma_scale ** 2)', min = sigma ** 2, max = stats.describe(depths).variance)
+    pre_obs = depths[(depths > (j-1) * mode) & (depths <= curr_mode)]
+    pre, post = 0.5 * pre_obs.size, depths[depths > curr_mode].size
+    gamma_weight_model = ConstantModel(prefix='gamma_wt_')
+    params.update(gamma_weight_model.make_params())
+    copynum_components = copynum_components + gamma_weight_model * gamma_model
+    return (components, copynum_components, params)
+
+def get_components_and_params(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error):
+    mode, mode_min, mode_max = param_guesses['mode'], param_guesses['mode_min'], param_guesses['mode_max']
+    sigma, sigma_min = param_guesses['sigma'], param_guesses['sigma_min']
+    density_ECDF = ECDF(depths)
+    density_at_modes, cdf_at_modes = setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, density_ECDF)
+    use_gamma, i = False, len(density_at_modes) - 1
+    if (i > 1) and ((i + 1) * mode <= depths[-1]):
+        copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
+        gamma_min_density_ratio = get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff)
+        gamma_min_cdf = get_gamma_min_cdf(copynums_in_90thpctl_mode_diff)
+        density_ratio = density_at_modes[-1] / density_at_modes[-2]
+        while (cdf_at_modes[-1] < 0.95) and (density_ratio > 0.1):
+            i += 1
+            if (cdf_at_modes[-1] > gamma_min_cdf) and (density_ratio > gamma_min_density_ratio):
+                use_gamma = True
+                break
+            density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
+            cdf_at_modes.append(density_ECDF([i * mode])[0])
+            density_ratio = density_at_modes[-1] / density_at_modes[-2]
+    component_weights = get_component_weights(density_at_modes, cdf_at_modes, use_gamma)
+    smallest_copynum = 0.5
+    if component_weights[0] == 0:
+        if component_weights[1] == 0:
+            error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
+            error_msg += 'none are single-copy (either homo- or heterozygous)!'
+            raise RuntimeError(error_msg)
+        smallest_copynum = 1
+    max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(component_weights) - 1 - int(use_gamma))
+    components, copynum_components, params = init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums)
+    if use_gamma:
+        return init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error)
+    return (components, copynum_components, params)
 
 def init_genome_scale_model(params, model_const):
     genome_scale_model = ConstantModel(prefix='genomescale_')
@@ -283,119 +387,45 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
     length_gp_sigmas = [None] * length_gps_count
     copynum_stats_hash = { col: [] for col in COPYNUM_STATS_COLS }
     aic_current = 0
-    mode, mode_min, mode_max = np.nan, 0, np.inf
-    sigma_min = 0
+    mode, mode_min, mode_max, sigma_min = np.nan, 0, np.inf, 0
 
     for len_gp_idx in range(length_gps_count - 1, -1, -1):
         print(len_gp_idx)
         # Estimate any probable error distribution, and mode excluding error sequences
         depths = np.copy(length_gps_for_est[len_gp_idx].mean_kmer_depth.values)
         depths.sort()
-        kde = sm.nonparametric.KDEUnivariate(depths)
-        kde.fit(bw=np.percentile(depths, 50) * 0.04) # median/25: seems like a decent heuristic
         offset = 0.1
         depth_max_pctl_rank = 100 - (stats.variation(depths) * 1.5)
         depth_max_pctl = np.percentile(depths, depth_max_pctl_rank)
-        grid_max = depth_max_pctl + offset # also seems like a decent heuristic
-        kde_grid_density = 20
-        grid_min = depths[0] - offset
-        kde_grid = np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, kde_grid_density, grid_min) + 1)
-        density = kde.evaluate(kde_grid)
+        kde_grid_density, grid_min, grid_max = 20, depths[0] - offset, depth_max_pctl + offset # last also seems like a decent heuristic
+        density = get_kdes(depths, grid_min, grid_max, kde_grid_density)
+        curr_len_gp_stats = set_curr_len_gp_stats(len_gp_stats[-1].loc[len_gp_idx], length_gps_for_est[len_gp_idx], depth_max_pctl, depth_max_pctl_rank)
 
-        len_gp_stats[-1].loc[len_gp_idx, 'count'] = length_gps_for_est[len_gp_idx].shape[0]
-        len_gp_stats[-1].loc[len_gp_idx, 'min_len'] = length_gps_for_est[len_gp_idx].len.min()
-        len_gp_stats[-1].loc[len_gp_idx, 'max_len'] = length_gps_for_est[len_gp_idx].len.max()
-        len_gp_stats[-1].loc[len_gp_idx, 'max_depth'] = length_gps_for_est[len_gp_idx].mean_kmer_depth.max()
-        len_gp_stats[-1].loc[len_gp_idx, 'max_depth_in_est'] = depth_max_pctl
-        len_gp_stats[-1].loc[len_gp_idx, 'max_depth_pctl_rank_in_est'] = depth_max_pctl_rank
-        curr_len_gp_stats = len_gp_stats[-1].loc[len_gp_idx]
+        min_density_depth_idx_1 = get_min_density_depth_candidate(depths, density, grid_min, kde_grid_density)
+        depths = truncate_depths(depths, min_density_depth_idx_1, density, depth_max_pctl)
 
-        min_density_depth_idx_1 = 0
-        # hopefully universally effective heuristic to avoid inappropriately applying to very narrow depth distributions
-        # location of min., if any, between error distribution and mode not likely to be lower than this; and if it is, hopefully little harm done being off by < 1
-        if depths[0] + 1 < np.percentile(depths, 10):
-            soft_lb_idx = m.ceil(val_to_grid_idx(depths[0] + 1, kde_grid_density, grid_min))
-            min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:m.floor(val_to_grid_idx(np.percentile(depths, 20), kde_grid_density, grid_min))])
-
-        # condition mostly to exclude cases without perceptible error distribution, i.e. most cases, except small genomes
-        if min_density_depth_idx_1 > 0 and np.mean(density[:min_density_depth_idx_1]) > density[min_density_depth_idx_1]:
-            depths = depths[min_density_depth_idx_1:]
-        depths = depths[depths <= depth_max_pctl]
-
-        mode_idx = min_density_depth_idx_1 + np.argmax(density[min_density_depth_idx_1:])
-        len_group_mode = grid_idx_to_val(mode_idx, kde_grid_density, grid_min)
+        len_group_mode = get_len_group_mode(min_density_depth_idx_1, density, grid_min, kde_grid_density)
         if np.isnan(mode):
             mode = len_group_mode
             mode /= longest_seqs_mode1_copynum # for consistency: let it represent c#1
-
         # Estimate standard deviation of copy-number 1 sequences
         if variance_from_curve(len_group_mode, mode, longest_seqs_mode1_copynum, mode_error):
             # Perhaps it's a mistake not to enforce that mode1_copynum be <= 2?
-            mode1_copynum = round(len_group_mode / mode) or 0.5
-            sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode * 0.25, depths[0])) / mode1_copynum
+            sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode * 0.25, depths[0])) / (round(len_group_mode / mode) or 0.5)
         else:
             sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[(len_gp_idx + 1):])
         if sigma < sigma_min:
             sigma_min = 0
 
-        # Estimate copy-number component weights starting at means of cp#s 0.5 & 1
-        density_ECDF = ECDF(depths)
-        if (0.5 * mode) <= depths[0]:
-            density_at_modes, cdf_at_modes = [0], [0]
-        else:
-            density_at_modes = [get_density_for_idx(val_to_grid_idx(0.5 * mode, kde_grid_density, grid_min), density)]
-            cdf_at_modes = [density_ECDF([0.5 * mode])[0]]
-        if mode < depths[-1]:
-            density_at_modes.append(get_density_for_idx(val_to_grid_idx(mode, kde_grid_density, grid_min), density))
-            cdf_at_modes.append(density_ECDF([mode])[0])
-        # min(x1, x2): see notes with illustration
-        i, modes_in_depths = 2, round(depths[-1] * 1.0 / mode)
-        for i in np.arange(2.0, min(round((len_group_mode * 1.0 / mode) + 2.5), modes_in_depths + 1 - int(density_ECDF([(modes_in_depths - 0.5) * mode])[0] > 0.99))):
-            if i * mode <= depths[-1]:
-                density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
-                cdf_at_modes.append(density_ECDF([i * mode])[0])
-        use_gamma = False
-        if ((i + 1) * mode <= depths[-1]) and (len(density_at_modes) > 2):
-            copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
-            gamma_min_density_ratio = 0.65 + min(copynums_in_90thpctl_mode_diff / 40, 1) * 0.2
-            len_group_mode_pctl_rank = stats.percentileofscore(depths, len_group_mode)
-            gamma_min_cdf = (len_group_mode_pctl_rank + ((90.0 - len_group_mode_pctl_rank) / m.pow(copynums_in_90thpctl_mode_diff, 1/3))) / 100.0
-            density_ratio = density_at_modes[-1] / density_at_modes[-2]
-            while (cdf_at_modes[-1] < 0.95) and (density_ratio > 0.1):
-                i += 1
-                if (cdf_at_modes[-1] > gamma_min_cdf) and (density_ratio > gamma_min_density_ratio):
-                    use_gamma = True
-                    break
-                density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
-                cdf_at_modes.append(density_ECDF([i * mode])[0])
-                density_ratio = density_at_modes[-1] / density_at_modes[-2]
-
-        component_weights = get_component_weights(density_at_modes, cdf_at_modes, use_gamma)
-        smallest_copynum = get_smallest_copynum(component_weights)
-        max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(component_weights) - 1 - int(use_gamma))
+        param_guesses = { 'mode': mode, 'mode_min': mode_min, 'mode_max': mode_max, 'sigma': sigma, 'sigma_min': sigma_min }
+        components, copynum_components, params = get_components_and_params(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error)
+        use_gamma = (components[-1].prefix == 'gamma_')
+        smallest_copynum = 0.5
+        if components[0] is None:
+            smallest_copynum = 1
+        max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(components) - 1 - int(use_gamma))
         len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
         len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = max_gaussian_copynums + int(use_gamma)
-        param_guesses = { 'mode': mode, 'mode_min': mode_min, 'mode_max': mode_max, 'sigma': sigma, 'sigma_min': sigma_min }
-        components, copynum_components, params = init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums)
-
-        if use_gamma:
-            gamma_model = Model(gamma, prefix='gamma_')
-            components.append(gamma_model)
-            params.update(gamma_model.make_params())
-            j = len(density_at_modes) - 1
-            curr_mode = j * mode
-            tail_stats = stats.describe(depths[depths > curr_mode])
-            params['gamma_mode'] = Parameter(value = curr_mode + mode, min = j * (1 - mode_error - NONNEG_CONSTANT) * mode, max = tail_stats.mean) # avoid starting too near boundary
-            params['gamma_shape'].set(value = tail_stats.mean * 1.0 / (tail_stats.mean - curr_mode), min = 1 + (mode * 1.0) / (depths[-1] - curr_mode))
-            params['gamma_scale'].set(value = tail_stats.mean - curr_mode, min = NONNEG_CONSTANT, max = depths[-1] - curr_mode)
-            params['gamma_mean'] = Parameter(expr = 'gamma_mode + gamma_scale')
-            params['gamma_loc'].set(expr = 'gamma_mean - gamma_shape * gamma_scale', min = -1.0 * curr_mode, max = (j - 1) * (1 - mode_error) * mode) # 9 = 2 * 4.5
-            params['gamma_variance'] = Parameter(expr = 'gamma_shape * (gamma_scale ** 2)', min = sigma ** 2, max = stats.describe(depths).variance)
-            pre_obs = depths[(depths > (j-1) * mode) & (depths <= curr_mode)]
-            pre, post = 0.5 * pre_obs.size, depths[depths > curr_mode].size
-            gamma_weight_model = ConstantModel(prefix='gamma_wt_')
-            params.update(gamma_weight_model.make_params())
-            copynum_components = copynum_components + gamma_weight_model * gamma_model
 
         # Finally estimate copy numbers using lmfit
         result = finalise_and_fit(components, copynum_components, params, smallest_copynum, depths.size)
