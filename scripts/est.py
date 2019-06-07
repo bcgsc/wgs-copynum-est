@@ -273,6 +273,107 @@ def get_smallest_copynum(prefixes):
         return 0.5
     return 1
 
+def set_smallest_copynum_prefix(smallest_copynum):
+    if smallest_copynum == 0.5:
+        return 'gausshalf_'
+    return ('gauss' + str(smallest_copynum) + '_')
+
+# Set mode the first time, i.e. from estimation and classification of longest sequences
+def set_mode(mode_val, mode_error, smallest_copynum):
+    mode = mode_val / smallest_copynum
+    return (mode, (1 - mode_error) * mode, (1 + mode_error) * mode)
+
+def set_sigma_min(sigma_result, smallest_copynum, mode_error):
+    sigma_err = sigma_result.stderr or 0
+    sigma_min = (sigma_result.value - sigma_err) / smallest_copynum
+    if sigma_err == 0:
+        return ((1 - mode_error) * sigma_min)
+    return sigma_min
+
+def get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, density, component_prefixes, smallest_copynum, use_gamma, include_half, params):
+    likeliest_copynums, likeliest_copynum_ubs = [], []
+    depth, step = grid_min + offset, 0.02
+    empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
+    copynum = compute_likeliest_copynum_at(depth, component_prefixes, smallest_copynum, use_gamma, include_half, params, empirical_dens)
+    nonzero = (copynum > 0)
+    likeliest_copynums.append(copynum)
+    for depth in np.arange(depth + step, depths[0], step):
+        nonzero = eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
+    for i in range(len(depths)):
+        nonzero = eval_copynum_at(depths[i], nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
+    return (likeliest_copynums, likeliest_copynum_ubs)
+
+def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, component_prefixes, smallest_copynum):
+    copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
+    copynum_lbs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
+    copynum_ubs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
+    if copynum_assnmts[0] > 0:
+        copynum_lbs[m.floor(copynum_assnmts[0])] = 0
+    # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
+    # (whereas 1, 4, 3, 2 could [copy#4 variance is larger than that of 3])
+    # 2. Out-of-order copy#s are always followed eventually by in-order copy#s, e.g.: 1, 3, 2 will be followed eventually by a copy# >= 3
+    for i in range(1, len(likeliest_copynums)):
+        if likeliest_copynums[i] not in copynums_unique:
+            if likeliest_copynums[i] < copynum_assnmts[-1]:
+                copynum_lbs[m.floor(copynum_assnmts[-1])] = np.inf
+                copynums_unique.remove(copynum_assnmts[-1])
+                copynum_assnmts.pop()
+            if len(copynum_assnmts) == 0:
+                copynum_lbs[m.floor(likeliest_copynums[i])] = 0
+            else:
+                copynum_lbs[m.floor(likeliest_copynums[i])] = likeliest_copynum_ubs[i-1]
+                if copynum_assnmts[-1] > 0:
+                    copynum_ubs[m.floor(copynum_assnmts[-1])] = likeliest_copynum_ubs[i-1]
+            copynum_assnmts.append(likeliest_copynums[i])
+            copynums_unique.add(likeliest_copynums[i])
+    return (copynum_assnmts, copynum_lbs, copynum_ubs)
+
+def assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs):
+    seqs.loc[gp_len_condition, 'modex'] = seqs.loc[gp_len_condition].mean_kmer_depth / mode
+    seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx
+    # Note: 1. copynum_lbs[i] == copynum_ubs[i-1]. 2. 0 does not have an entry in copynum_lbs and copynum_ubs.
+    if len(copynum_assnmts) > 1:
+        seqs.loc[gp_len_condition & (seqs.mean_kmer_depth < copynum_lbs[m.floor(copynum_assnmts[1])]), 'likeliest_copynum'] = copynum_assnmts[0]
+    else:
+        seqs.loc[gp_len_condition, 'likeliest_copynum'] = copynum_assnmts[0]
+    for i in range(1, len(copynum_assnmts)):
+        idx = m.floor(copynum_assnmts[i])
+        seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= copynum_lbs[idx]) & (seqs.mean_kmer_depth < copynum_ubs[idx]), 'likeliest_copynum'] = copynum_assnmts[i]
+
+def create_copynum_stats(smallest_copynum, use_gamma, include_half, params, component_prefixes, copynum_stats_hash):
+    wt, mean, sigma = 0, 0, 0
+    wt_i, mean_i, sigma_i = 0, 0, 0
+    if smallest_copynum < 1:
+        wt, mean, sigma = get_component_params('gausshalf_', params)[:3]
+    has_copynum1 = (smallest_copynum == 1) or next((True for p in component_prefixes if re.search(r'gauss1', p)), False)
+    if has_copynum1:
+        wt_i, mean_i, sigma_i = get_component_params('gauss1_', params)[:3]
+    if include_half:
+        add_to_copynum_stats(get_copynum_stats_data(0.5, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
+        if has_copynum1:
+            add_to_copynum_stats(get_copynum_stats_data(1, wt_i, mean_i, sigma_i), COPYNUM_STATS_COLS, copynum_stats_hash)
+    else:
+        wt1 = wt + wt_i
+        wt_normed, wt_i_normed = wt/wt1, wt_i/wt1
+        mean1 = (wt_normed * mean) + (wt_i_normed * mean_i)
+        sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
+        add_to_copynum_stats(get_copynum_stats_data(1, has_copynum1, wt1, mean1, sigma1), COPYNUM_STATS_COLS, copynum_stats_hash)
+    for i in range(2, len(component_prefixes) - int(smallest_copynum < 1) - int(use_gamma) + 1):
+        wt, mean, sigma = get_component_params('gauss' + str(i) + '_', params)[:3]
+        add_to_copynum_stats(get_copynum_stats_data(i, has_copynum1, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
+    if use_gamma:
+        wt, mean, sigma, loc, shape, scale = get_component_params('gamma_', params)
+        add_to_copynum_stats(get_copynum_stats_data(i + 1, has_copynum1, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
+
+def write_to_log(log_file, len_gp_idx, minlen, maxlen, maxdepth, depth_max_pctl, depth_max_pctl_rank, fit_report):
+    log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
+    log_file.write('Group minimum and maximum lengths: ' + str(minlen) + ', ' + str(maxlen) + '\n')
+    log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(maxdepth) + '. ')
+    log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n\n')
+    log_file.write('Fit report:\n')
+    log_file.write(fit_report)
+    log_file.write('\n\n')
+
 def gamma(x, shape, loc, scale):
     return stats.gamma.pdf(x, shape, loc, scale)
 
@@ -435,30 +536,21 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
             error_msg += 'none are single-copy (either homo- or heterozygous)!'
             raise RuntimeError(error_msg)
+        aic_current += result.aic
         copynum_component_prefixes = set(map(lambda name: re.search(r'(.+?_)', name).group(), result.params.valuesdict().keys())) - { 'dummy_', 'genomescale_' }
         use_gamma = ('gamma_' in copynum_component_prefixes)
         smallest_copynum = get_smallest_copynum(copynum_component_prefixes)
         len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
         len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = len(copynum_component_prefixes) - int(smallest_copynum == 0.5)
-        aic_current += result.aic
 
-        # Set mode the first time, i.e. from estimation and classification of longest sequences
-        smallest_copynum_prefix = 'gauss' + str(smallest_copynum) + '_'
-        if smallest_copynum == 0.5:
-            smallest_copynum_prefix = 'gausshalf_'
+        smallest_copynum_prefix = set_smallest_copynum_prefix(smallest_copynum)
         if mode_max == np.inf:
-            mode = result.params[smallest_copynum_prefix + 'center'].value / smallest_copynum
-            mode = result.params[smallest_copynum_prefix + 'center'].value / smallest_copynum
-            mode_min = (1 - mode_error) * mode
-            mode_max = (1 + mode_error) * mode
-        sigma_err = result.params[smallest_copynum_prefix + 'sigma'].stderr or 0
-        sigma_min = (result.params[smallest_copynum_prefix + 'sigma'].value - sigma_err) / smallest_copynum
-        if sigma_err == 0:
-            sigma_min = (1 - mode_error) * sigma_min
+            mode, mode_min, mode_max = set_mode(result.params[smallest_copynum_prefix + 'center'].value, mode_error, smallest_copynum)
+        sigma_min = set_sigma_min(result.params[smallest_copynum_prefix + 'sigma'], smallest_copynum, mode_error)
         length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
 
         # Compute copy# component boundaries (enough to classify observations; may not be technically accurate [i.e. at population level])
-        def eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs):
+        def eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens):
             empirical_dens = None
             if not(nonzero):
                 empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
@@ -470,96 +562,31 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
                 likeliest_copynums.append(copynum)
             return nonzero
 
-        likeliest_copynums, likeliest_copynum_ubs = [], []
-        depth, step = grid_min + offset, 0.02
-        empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
-        copynum = compute_likeliest_copynum_at(depth, copynum_component_prefixes, smallest_copynum, use_gamma, args.half, result.params, empirical_dens)
-        nonzero = (copynum > 0)
-        likeliest_copynums.append(copynum)
-        for depth in np.arange(depth + step, depths[0], step):
-            nonzero = eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs)
-        for i in range(0, len(depths)):
-            nonzero = eval_copynum_at(depths[i], nonzero, likeliest_copynums, likeliest_copynum_ubs)
-
+        likeliest_copynums, likeliest_copynum_ubs = get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, density, copynum_component_prefixes,
+                                                                                   smallest_copynum, use_gamma, args.half, result.params)
         # Initial assignments might be slightly out of order: have to infer orderly final assignments
-        copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
-        copynum_lbs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
-        copynum_ubs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
-        if copynum_assnmts[0] > 0:
-            copynum_lbs[m.floor(copynum_assnmts[0])] = 0
-        # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
-        # (whereas 1, 4, 3, 2 could [copy#4 variance is larger than that of 3])
-        # 2. Out-of-order copy#s are always followed eventually by in-order copy#s, e.g.: 1, 3, 2 will be followed eventually by a copy# >= 3
-        for i in range(1, len(likeliest_copynums)):
-            if likeliest_copynums[i] not in copynums_unique:
-                if likeliest_copynums[i] < copynum_assnmts[-1]:
-                    copynum_lbs[m.floor(copynum_assnmts[-1])] = np.inf
-                    copynums_unique.remove(copynum_assnmts[-1])
-                    copynum_assnmts.pop()
-                if len(copynum_assnmts) == 0:
-                    copynum_lbs[m.floor(likeliest_copynums[i])] = 0
-                else:
-                    copynum_lbs[m.floor(likeliest_copynums[i])] = likeliest_copynum_ubs[i-1]
-                    if copynum_assnmts[-1] > 0:
-                        copynum_ubs[m.floor(copynum_assnmts[-1])] = likeliest_copynum_ubs[i-1]
-                copynum_assnmts.append(likeliest_copynums[i])
-                copynums_unique.add(likeliest_copynums[i])
-
+        copynum_assnmts, copynum_lbs, copynum_ubs = assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynum_component_prefixes, smallest_copynum)
         # Assign to sequences in the corresponding ranges
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
-        seqs.loc[gp_len_condition, 'modex'] = seqs.loc[gp_len_condition].mean_kmer_depth / mode
-        seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx
-        # Note: 1. copynum_lbs[i] == copynum_ubs[i-1]. 2. 0 does not have an entry in copynum_lbs and copynum_ubs.
-        if len(copynum_assnmts) > 1:
-            seqs.loc[gp_len_condition & (seqs.mean_kmer_depth < copynum_lbs[m.floor(copynum_assnmts[1])]), 'likeliest_copynum'] = copynum_assnmts[0]
-        else:
-            seqs.loc[gp_len_condition, 'likeliest_copynum'] = copynum_assnmts[0]
-        for i in range(1, len(copynum_assnmts)):
-            idx = m.floor(copynum_assnmts[i])
-            seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= copynum_lbs[idx]) & (seqs.mean_kmer_depth < copynum_ubs[idx]), 'likeliest_copynum'] = copynum_assnmts[i]
+        assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs)
 
-        def get_copynum_stats_data(idx, wt, mean, sigma, loc = None, shape = None, scale = None): # copy number idx
+        def get_copynum_stats_data(idx, wt, mean, sigma, has_copynum1 = True, loc = None, shape = None, scale = None): # copy number idx
+            lb_idx, ub_idx = m.floor(idx), m.floor(idx)
+            if not(args.half) and idx == 1:
+                lb_idx, ub_idx = 0, int(has_copynum1)
             return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[m.floor(idx)], copynum_ubs[m.floor(idx)], wt, mean, sigma, loc, shape, scale]
 
-        wt, mean, sigma = 0, 0, 0
-        wt_i, mean_i, sigma_i = 0, 0, 0
-        if smallest_copynum < 1:
-            wt, mean, sigma = get_component_params('gausshalf_', result.params)[:3]
-        has_copynum1 = (smallest_copynum == 1) or next((True for p in copynum_component_prefixes if re.search(r'gauss1', p)), False)
-        if has_copynum1:
-            wt_i, mean_i, sigma_i = get_component_params('gauss1_', result.params)[:3]
-        if args.half:
-            add_to_copynum_stats(get_copynum_stats_data(0.5, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
-            if has_copynum1:
-                add_to_copynum_stats(get_copynum_stats_data(1, wt_i, mean_i, sigma_i), COPYNUM_STATS_COLS, copynum_stats_hash)
-        else:
-            wt1 = wt + wt_i
-            wt_normed, wt_i_normed = wt/wt1, wt_i/wt1
-            mean1 = (wt_normed * mean) + (wt_i_normed * mean_i)
-            sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
-            copynum_stats_data = [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, 1, copynum_lbs[0], copynum_ubs[int(has_copynum1)], wt1, mean1, sigma1, None, None, None]
-            add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
-        for i in range(2, len(copynum_component_prefixes) - int(smallest_copynum < 1) - int(use_gamma) + 1):
-            wt, mean, sigma, loc, shape, scale = get_component_params('gauss' + str(i) + '_', result.params)
-            add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
-        if use_gamma:
-            wt, mean, sigma, loc, shape, scale = get_component_params('gamma_', result.params)
-            add_to_copynum_stats(get_copynum_stats_data(i + 1, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
+        create_copynum_stats(smallest_copynum, use_gamma, args.half, result.params, copynum_component_prefixes, copynum_stats_hash)
 
-        log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
-        log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
-        log_file.write('Maximum mean k-mer depth of all sequences in group: ' + str(curr_len_gp_stats.max_depth) + '. ')
-        log_file.write('Maximum used in estimation: ' + str(depth_max_pctl) + ' (' + str(depth_max_pctl_rank) + ' percentile).\n\n')
-        log_file.write('Fit report:\n')
-        log_file.write(result.fit_report())
-        log_file.write('\n\n')
+        write_to_log(log_file, len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, curr_len_gp_stats.max_depth,
+                     depth_max_pctl, depth_max_pctl_rank, result.fit_report())
+    # End inner loop across sequence length groups
 
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
     if aic_current < aic:
         aic = aic_current
         better_fit_model = longest_seqs_mode1_copynum
-    log_file.write('Sum of per-length-group model AICs: ' + str(aic))
-    log_file.write('\n\n')
+    log_file.write('Sum of per-length-group model AICs: ' + str(aic) + '\n\n')
     print('')
     seq_label_filename = args.output_dir + '/sequence-labels.csv'
     if better_fit_model == longest_seqs_mode1_copynum:
