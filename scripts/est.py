@@ -116,9 +116,9 @@ def get_gamma_min_cdf(copynums_in_90thpctl_mode_diff):
 def get_density_for_idx(idx, density):
     return (density[m.floor(idx)] + (idx - m.floor(idx)) * (density[m.ceil(idx)] - density[m.floor(idx)]))
 
-def get_component_weights(density_at_modes, use_gamma, cdf_at_modes = None):
+def get_component_weights(density_at_modes, use_gamma = False, cdf_at_modes = None, next_mode_cdf = None):
     if use_gamma:
-        gamma_prob = 2.0 * (1 - cdf_at_modes[-1]) / 3
+        gamma_prob = 0.5 * (next_mode_cdf - cdf_at_modes[-1]) + (1 - next_mode_cdf)
         component_weights = np.zeros(len(density_at_modes))
         component_weights[:-1] = np.array(density_at_modes[:-1]) * (1 - gamma_prob) / sum(density_at_modes[:-1])
         component_weights[-1] = gamma_prob
@@ -256,7 +256,8 @@ def setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, le
         smallest_copynum = 1
     aic = np.inf
     for j in range(i, lb, -1):
-        component_weights = get_component_weights(density_at_modes[:(j+1)], use_gamma, cdf_at_modes[:(j+1)])
+        next_mode_cdf = (use_gamma and (((j == i) and density_ECDF([(j + 1) * mode])[0]) or cdf_at_modes[j+1])) or None
+        component_weights = get_component_weights(density_at_modes[:(j+1)], use_gamma, cdf_at_modes[:(j+1)], next_mode_cdf)
         max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(component_weights) - 1 - int(use_gamma))
         components, copynum_components, params = init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums)
         if use_gamma:
