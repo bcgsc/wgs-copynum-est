@@ -397,7 +397,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
     length_gp_sigmas = [None] * length_gps_count
     copynum_stats_hash = { col: [] for col in COPYNUM_STATS_COLS }
     aic_current = 0
-    mode, mode_min, mode_max, sigma_min = np.nan, 0, np.inf, 0
+    mode, mode_min, mode_max, sigma_min = np.nan, 0, np.inf, 0 # 0 mins because NONNEG_CONSTANT resulted in no CIs (numerical instability?)
 
     for len_gp_idx in range(length_gps_count - 1, -1, -1):
         print(len_gp_idx)
