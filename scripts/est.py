@@ -116,7 +116,7 @@ def get_gamma_min_cdf(copynums_in_90thpctl_mode_diff):
 def get_density_for_idx(idx, density):
     return (density[m.floor(idx)] + (idx - m.floor(idx)) * (density[m.ceil(idx)] - density[m.floor(idx)]))
 
-def get_component_weights(density_at_modes, cdf_at_modes, use_gamma):
+def get_component_weights(density_at_modes, use_gamma, cdf_at_modes = None):
     if use_gamma:
         gamma_prob = 2.0 * (1 - cdf_at_modes[-1]) / 3
         component_weights = np.zeros(len(density_at_modes))
@@ -125,11 +125,6 @@ def get_component_weights(density_at_modes, cdf_at_modes, use_gamma):
     else:
         component_weights = np.array(density_at_modes) / sum(density_at_modes)
     return component_weights
-
-def get_smallest_copynum(components):
-    if components[0] is None:
-        return 1
-    return 0.5
 
 def init_dummy_model():
     dummy = ConstantModel(prefix='dummy_')
@@ -194,45 +189,12 @@ def init_gamma(depths, components, copynum_components, params, mode, sigma, mode
     copynum_components = copynum_components + gamma_weight_model * gamma_model
     return (components, copynum_components, params)
 
-def get_components_and_params(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error):
-    mode, mode_min, mode_max = param_guesses['mode'], param_guesses['mode_min'], param_guesses['mode_max']
-    sigma, sigma_min = param_guesses['sigma'], param_guesses['sigma_min']
-    density_ECDF = ECDF(depths)
-    density_at_modes, cdf_at_modes = setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, density_ECDF)
-    use_gamma, i = False, len(density_at_modes) - 1
-    if (i > 1) and ((i + 1) * mode <= depths[-1]):
-        copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
-        gamma_min_density_ratio = get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff)
-        gamma_min_cdf = get_gamma_min_cdf(copynums_in_90thpctl_mode_diff)
-        density_ratio = density_at_modes[-1] / density_at_modes[-2]
-        while (cdf_at_modes[-1] < 0.95) and (density_ratio > 0.1):
-            i += 1
-            if (cdf_at_modes[-1] > gamma_min_cdf) and (density_ratio > gamma_min_density_ratio):
-                use_gamma = True
-                break
-            density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
-            cdf_at_modes.append(density_ECDF([i * mode])[0])
-            density_ratio = density_at_modes[-1] / density_at_modes[-2]
-    component_weights = get_component_weights(density_at_modes, cdf_at_modes, use_gamma)
-    smallest_copynum = 0.5
-    if component_weights[0] == 0:
-        if component_weights[1] == 0:
-            error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
-            error_msg += 'none are single-copy (either homo- or heterozygous)!'
-            raise RuntimeError(error_msg)
-        smallest_copynum = 1
-    max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(component_weights) - 1 - int(use_gamma))
-    components, copynum_components, params = init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums)
-    if use_gamma:
-        return init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error)
-    return (components, copynum_components, params)
-
 def init_genome_scale_model(params, model_const):
     genome_scale_model = ConstantModel(prefix='genomescale_')
     params.update(genome_scale_model.make_params(c=model_const))
     return genome_scale_model
 
-def finalise_params(params, components, smallest_copynum):
+def finalise_params(params, components, smallest_copynum, use_gamma):
     if len(components) - 1 == m.floor(smallest_copynum):
         params[components[m.floor(smallest_copynum)].prefix + 'amplitude'].set(value = 1.0, vary=False)
     else:
@@ -255,10 +217,60 @@ def fit(depths, mixture_model, params):
     lmfit_range = np.arange(lb, ub, step)
     return mixture_model.fit(np.histogram(depths, lmfit_range)[0], params, x=lmfit_range[1:])
 
-def finalise_and_fit(components, copynum_components, params, smallest_copynum, depths_size):
+def finalise_and_fit(components, copynum_components, params, smallest_copynum, use_gamma, depths_size):
     mixture_model = init_genome_scale_model(params, depths_size) * copynum_components
-    params = finalise_params(params, components, smallest_copynum)
+    params = finalise_params(params, components, smallest_copynum, use_gamma)
     return fit(depths, mixture_model, params)
+
+def setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error):
+    mode, mode_min, mode_max = param_guesses['mode'], param_guesses['mode_min'], param_guesses['mode_max']
+    sigma, sigma_min = param_guesses['sigma'], param_guesses['sigma_min']
+    density_ECDF = ECDF(depths)
+    density_at_modes, cdf_at_modes = setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, density_ECDF)
+    i, use_gamma, vary_copynum = len(density_at_modes) - 1, False, False
+    if (i > 1) and ((i + 1) * mode <= depths[-1]):
+        vary_copynum = True
+        copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
+        gamma_min_density_ratio = get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff)
+        gamma_min_cdf = get_gamma_min_cdf(copynums_in_90thpctl_mode_diff)
+        density_ratio = density_at_modes[-1] / density_at_modes[-2]
+        while (cdf_at_modes[-1] < 0.95) and (density_ratio > 0.1):
+            i += 1
+            if (cdf_at_modes[-1] > gamma_min_cdf) and (density_ratio > gamma_min_density_ratio):
+                use_gamma, i = True, i - 1
+                break
+            density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
+            cdf_at_modes.append(density_ECDF([i * mode])[0])
+            density_ratio = density_at_modes[-1] / density_at_modes[-2]
+    lb = i - 1
+    if vary_copynum:
+        lb = i - 2
+        if ((i + 1) * mode <= depths[-1]) and (density_ECDF([(i + 1) * mode])[0] < 0.99):
+            i += 1
+            density_at_modes.append(get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density))
+            cdf_at_modes.append(density_ECDF([i * mode])[0])
+    smallest_copynum = 0.5
+    if density_at_modes[0] == 0:
+        if density_at_modes[1] == 0:
+            raise RuntimeError
+        smallest_copynum = 1
+    aic = np.inf
+    for j in range(i, lb, -1):
+        component_weights = get_component_weights(density_at_modes[:(j+1)], use_gamma, cdf_at_modes[:(j+1)])
+        max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(component_weights) - 1 - int(use_gamma))
+        components, copynum_components, params = init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums)
+        if use_gamma:
+            components, copynum_components, params = init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error)
+        # Finally estimate copy numbers using lmfit
+        result_temp = finalise_and_fit(components, copynum_components, params, smallest_copynum, use_gamma, depths.size)
+        if (result_temp.aic / aic) < 1 + min(0.025, 0.005 * (i - 3)): # slight penalty for higher # of components, increasing with i ("base" #)
+            result, aic = result_temp, result_temp.aic
+    return result
+
+def get_smallest_copynum(prefixes):
+    if 'gausshalf_' in prefixes:
+        return 0.5
+    return 1
 
 def gamma(x, shape, loc, scale):
     return stats.gamma.pdf(x, shape, loc, scale)
@@ -283,34 +295,32 @@ def guess_next_sigma(length_median, length_medians, sigmas):
     K, log_A = np.polyfit(length_medians, np.log(sigmas), 1)
     return m.exp(K * length_median + log_A)
 
-def get_component_params(idx, components, params):
-    if components[m.floor(idx)] is None:
-        return (0, 0, 0, None, None, None)
-    prefix = components[m.floor(idx)].prefix
+def get_component_params(prefix, params):
     if re.match('gauss', prefix):
         return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value, None, None, None)
     return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value), params['gamma_loc'].value, params['gamma_shape'].value, params['gamma_scale'].value)
 
-def compute_gaussian_density_at(x, idx, components, params):
-    wt, mean, sigma = get_component_params(idx, components, params)[:3]
+def compute_gaussian_density_at(x, prefix, params):
+    wt, mean, sigma = get_component_params(prefix, params)[:3]
     return wt * stats.norm.pdf(x, mean, sigma)
 
-def compute_density_at(x, idx, components, params):
-    if components[m.floor(idx)] is None:
-        return 0
-    if re.match('gauss', components[m.floor(idx)].prefix):
-        return compute_gaussian_density_at(x, idx, components, params)
+def compute_density_at(x, prefix, params):
+    if re.match('gauss', prefix):
+        return compute_gaussian_density_at(x, prefix, params)
     return params['gamma_wt_c'] * stats.gamma.pdf(x, params['gamma_shape'], params['gamma_loc'], params['gamma_scale'])
 
-def compute_likeliest_copynum_at(x, components, params, include_half, empirical_dens = None):
-    densities = [0] * len(components)
+def compute_likeliest_copynum_at(x, prefixes, smallest_copynum, use_gamma, include_half, params, empirical_dens = None):
+    densities = [0] * (len(prefixes) + int(smallest_copynum == 1))
     if not(include_half) and len(densities) == 1:
         densities.append(0)
-    if len(components) > 1:
-        densities[1] = compute_density_at(x, 1, components, params)
-    densities[int(not(include_half))] += compute_density_at(x, 0.5, components, params)
-    for i in range(2, len(densities)):
-        densities[i] = compute_density_at(x, i, components, params)
+    if 'gauss1_' in prefixes: # should always be True
+        densities[1] = compute_density_at(x, 'gauss1_', params)
+    if smallest_copynum == 0.5:
+        densities[int(not(include_half))] += compute_density_at(x, 'gausshalf_', params)
+    for i in range(2, len(densities) - int(use_gamma)):
+        densities[i] = compute_density_at(x, 'gauss' + str(i) + '_', params)
+    if use_gamma:
+        densities[i+1] = compute_density_at(x, 'gamma_', params)
     maxdens_idx = np.argmax(densities)
     if empirical_dens is not None:
         if empirical_dens - sum(densities) > densities[maxdens_idx]:
@@ -418,36 +428,40 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             sigma_min = 0
 
         param_guesses = { 'mode': mode, 'mode_min': mode_min, 'mode_max': mode_max, 'sigma': sigma, 'sigma_min': sigma_min }
-        components, copynum_components, params = get_components_and_params(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error)
-        use_gamma = (components[-1].prefix == 'gamma_')
-        smallest_copynum = 0.5
-        if components[0] is None:
-            smallest_copynum = 1
-        max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(components) - 1 - int(use_gamma))
+        try:
+            result = setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error)
+        except RuntimeError:
+            error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
+            error_msg += 'none are single-copy (either homo- or heterozygous)!'
+            raise RuntimeError(error_msg)
+        copynum_component_prefixes = set(map(lambda name: re.search(r'(.+?_)', name).group(), result.params.valuesdict().keys())) - { 'dummy_', 'genomescale_' }
+        use_gamma = ('gamma_' in copynum_component_prefixes)
+        smallest_copynum = get_smallest_copynum(copynum_component_prefixes)
         len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
-        len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = max_gaussian_copynums + int(use_gamma)
-
-        # Finally estimate copy numbers using lmfit
-        result = finalise_and_fit(components, copynum_components, params, smallest_copynum, depths.size)
+        len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = len(copynum_component_prefixes) - int(smallest_copynum == 0.5)
         aic_current += result.aic
 
         # Set mode the first time, i.e. from estimation and classification of longest sequences
+        smallest_copynum_prefix = 'gauss' + str(smallest_copynum) + '_'
+        if smallest_copynum == 0.5:
+            smallest_copynum_prefix = 'gausshalf_'
         if mode_max == np.inf:
-            mode = result.params[components[m.floor(smallest_copynum)].prefix + 'center'].value / smallest_copynum
+            mode = result.params[smallest_copynum_prefix + 'center'].value / smallest_copynum
+            mode = result.params[smallest_copynum_prefix + 'center'].value / smallest_copynum
             mode_min = (1 - mode_error) * mode
             mode_max = (1 + mode_error) * mode
-        sigma_err = result.params[components[m.floor(smallest_copynum)].prefix + 'sigma'].stderr or 0
-        sigma_min = (result.params[components[m.floor(smallest_copynum)].prefix + 'sigma'].value - sigma_err) / smallest_copynum
+        sigma_err = result.params[smallest_copynum_prefix + 'sigma'].stderr or 0
+        sigma_min = (result.params[smallest_copynum_prefix + 'sigma'].value - sigma_err) / smallest_copynum
         if sigma_err == 0:
             sigma_min = (1 - mode_error) * sigma_min
-        length_gp_sigmas[len_gp_idx] = result.params[components[m.floor(smallest_copynum)].prefix + 'sigma'].value / smallest_copynum
+        length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
 
         # Compute copy# component boundaries (enough to classify observations; may not be technically accurate [i.e. at population level])
         def eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs):
             empirical_dens = None
             if not(nonzero):
                 empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
-            copynum = compute_likeliest_copynum_at(depth, components, result.params, args.half, empirical_dens)
+            copynum = compute_likeliest_copynum_at(depth, copynum_component_prefixes, smallest_copynum, use_gamma, args.half, result.params, empirical_dens)
             if copynum != likeliest_copynums[-1]:
                 if copynum > 0:
                     nonzero = True
@@ -458,7 +472,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         likeliest_copynums, likeliest_copynum_ubs = [], []
         depth, step = grid_min + offset, 0.02
         empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
-        copynum = compute_likeliest_copynum_at(depth, components, result.params, args.half, empirical_dens)
+        copynum = compute_likeliest_copynum_at(depth, copynum_component_prefixes, smallest_copynum, use_gamma, args.half, result.params, empirical_dens)
         nonzero = (copynum > 0)
         likeliest_copynums.append(copynum)
         for depth in np.arange(depth + step, depths[0], step):
@@ -468,7 +482,8 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
 
         # Initial assignments might be slightly out of order: have to infer orderly final assignments
         copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
-        copynum_lbs, copynum_ubs = [np.inf] * len(components), [np.inf] * len(components)
+        copynum_lbs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
+        copynum_ubs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
         if copynum_assnmts[0] > 0:
             copynum_lbs[m.floor(copynum_assnmts[0])] = 0
         # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
@@ -493,7 +508,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
         seqs.loc[gp_len_condition, 'modex'] = seqs.loc[gp_len_condition].mean_kmer_depth / mode
         seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx
-        # 0 does not have an entry in copynum_lbs and copynum_ubs, and copynum_lbs[i] == copynum_ubs[i-1]
+        # Note: 1. copynum_lbs[i] == copynum_ubs[i-1]. 2. 0 does not have an entry in copynum_lbs and copynum_ubs.
         if len(copynum_assnmts) > 1:
             seqs.loc[gp_len_condition & (seqs.mean_kmer_depth < copynum_lbs[m.floor(copynum_assnmts[1])]), 'likeliest_copynum'] = copynum_assnmts[0]
         else:
@@ -507,11 +522,11 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
 
         wt, mean, sigma = 0, 0, 0
         wt_i, mean_i, sigma_i = 0, 0, 0
-        if components[0] is not None:
-            wt, mean, sigma = get_component_params(0, components, result.params)[:3]
-        has_copynum1 = (len(components) > 1) and (components[1] is not None)
+        if smallest_copynum < 1:
+            wt, mean, sigma = get_component_params('gausshalf_', result.params)[:3]
+        has_copynum1 = (smallest_copynum == 1) or next((True for p in copynum_component_prefixes if re.search(r'gauss1', p)), False)
         if has_copynum1:
-            wt_i, mean_i, sigma_i = get_component_params(1, components, result.params)[:3]
+            wt_i, mean_i, sigma_i = get_component_params('gauss1_', result.params)[:3]
         if args.half:
             add_to_copynum_stats(get_copynum_stats_data(0.5, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
             if has_copynum1:
@@ -523,9 +538,12 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
             copynum_stats_data = [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, 1, copynum_lbs[0], copynum_ubs[int(has_copynum1)], wt1, mean1, sigma1, None, None, None]
             add_to_copynum_stats(copynum_stats_data, COPYNUM_STATS_COLS, copynum_stats_hash)
-        for i in range(2, len(components)):
-            wt, mean, sigma, loc, shape, scale = get_component_params(i, components, result.params)
+        for i in range(2, len(copynum_component_prefixes) - int(smallest_copynum < 1) - int(use_gamma) + 1):
+            wt, mean, sigma, loc, shape, scale = get_component_params('gauss' + str(i) + '_', result.params)
             add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
+        if use_gamma:
+            wt, mean, sigma, loc, shape, scale = get_component_params('gamma_', result.params)
+            add_to_copynum_stats(get_copynum_stats_data(i + 1, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
 
         log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
         log_file.write('Group minimum and maximum lengths: ' + str(curr_len_gp_stats.min_len) + ', ' + str(curr_len_gp_stats.max_len) + '\n')
