@@ -152,7 +152,7 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
     for j in [0.5] + list(range(1, m.floor(max_gaussian_copynums) + 1)):
         model = init_gaussian(j, component_weights)
         components.append(model)
-        if model is not None:
+        if model:
             copynum_components = copynum_components + model
             params.update(model.make_params())
             if j == smallest_copynum:
@@ -322,7 +322,7 @@ def compute_likeliest_copynum_at(x, prefixes, smallest_copynum, use_gamma, inclu
     if use_gamma:
         densities[i+1] = compute_density_at(x, 'gamma_', params)
     maxdens_idx = np.argmax(densities)
-    if empirical_dens is not None:
+    if empirical_dens:
         if empirical_dens - sum(densities) > densities[maxdens_idx]:
             return 0
     return (maxdens_idx or 0.5)
