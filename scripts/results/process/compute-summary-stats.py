@@ -26,7 +26,6 @@ if aln_est_combos.columns[1] == 0.5:
     HALF, IDX1 = True, 0.5
 
 ONE_IDX, MANY_IDX = 1, 2
-LT2_COPYNUMS = aln_est_combos.index[aln_est_combos.index < 2]
 
 one_to_one = aln_est_combos.loc[IDX1:1.5, IDX1:1.5].sum().sum()
 one_to_many = aln_est_combos.loc[IDX1:1.5, 2:].sum().sum()

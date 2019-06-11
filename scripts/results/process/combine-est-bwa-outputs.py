@@ -12,7 +12,7 @@ argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequ
 argparser.add_argument("bwa_parse_output", type=str, help="BWA alignment output SAM file")
 args = argparser.parse_args()
 
-def count_and_write(max_components_est, seqs, total_seqs, cat=None):
+def count_and_write(max_components_est, seqs, cat=None):
   est_components = [0]
   if HALF and (max_components_est > 0):
     est_components.append(0.5)
@@ -46,7 +46,6 @@ def count_and_write(max_components_est, seqs, total_seqs, cat=None):
 
 
 seqs = pd.read_csv(args.est_output)
-TOTAL_SEQUENCES = seqs.shape[0]
 cols_from_to = { 'Length': 'length', 'Average k-mer depth': 'avg_depth', '1st Mode X': 'modex', 'GC %': 'GC', 'Estimation length group': 'len_gp', 'Likeliest copy #': 'copynum_est' }
 seqs.rename(columns=cols_from_to, inplace=True)
 seqs.set_index('ID', inplace=True)
@@ -86,7 +85,7 @@ if args.use_est_len_gps:
     count_files[i] = count_files[i] + str(i) + '.csv'
 
 for cat in range(len(mins)):
-  count_and_write(max_components_est, seqs, TOTAL_SEQUENCES, cat)
+  count_and_write(max_components_est, seqs, cat)
 
 est_components = [0]
 if HALF and (max_components_est > 0):
@@ -94,5 +93,5 @@ if HALF and (max_components_est > 0):
 if max_components_est >= 1:
   est_components = est_components + list(range(1, max_components_est + 1))
 
-count_and_write(max_components_est, seqs, TOTAL_SEQUENCES)
+count_and_write(max_components_est, seqs)
 
