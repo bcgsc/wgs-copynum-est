@@ -22,19 +22,15 @@ def count_and_write(max_components_est, seqs, total_seqs, cat=None):
   for i in est_components[1:]:
     cols.extend([i, 'avg_avg_depths_' + str(i), 'avg_gc_' + str(i)])
   aln_est = pd.DataFrame(None, index=est_components, columns=cols)
-  total = 0
   if cat is not None:
     seqs = seqs[(seqs.length >= mins[cat]) & (seqs.length <= maxs[cat])]
   for i in est_components:
-    count = 0
     for j in est_components:
       seqs_ij = seqs[(((seqs.len_gp_est_components >= i) & (seqs.aln_match_count == i)) | ((seqs.len_gp_est_components == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
       aln_est.loc[i, j] = seqs_ij.shape[0]
-      count += aln_est.loc[i, j]
       if aln_est.loc[i, j] > 0:
         aln_est.loc[i, 'avg_avg_depths_' + str(j)] = seqs_ij.avg_depth.sum() / aln_est.loc[i, j]
         aln_est.loc[i, 'avg_gc_' + str(j)] = seqs_ij.GC.sum() / aln_est.loc[i, j]
-    total += count
   assert aln_est[est_components].sum().sum() == seqs.shape[0], "Number of enumerated sequences [in length group] differs from number of input sequences!"
   header = []
   for i in est_components:
@@ -97,10 +93,6 @@ if HALF and (max_components_est > 0):
   est_components.append(0.5)
 if max_components_est >= 1:
   est_components = est_components + list(range(1, max_components_est + 1))
-count = 0
-for i in est_components:
-  count += (seqs.aln_match_count == i).sum()
-count += (seqs.aln_match_count > est_components[-1]).sum()
 
 count_and_write(max_components_est, seqs, TOTAL_SEQUENCES)
 
