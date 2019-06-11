@@ -49,6 +49,9 @@ def get_length_gps_for_est(seqs, len_percentiles_uniq, bin_minsize):
     length_gps.reverse()
     return length_gps
 
+def val_to_grid_idx(val, grid_density, minval):
+    return (grid_density * (val - minval))
+
 def get_kdes(depths, grid_min, grid_max, kde_grid_density):
     kde = sm.nonparametric.KDEUnivariate(depths)
     kde.fit(bw=np.percentile(depths, 50) * 0.04) # median/25: seems like a decent heuristic
@@ -63,8 +66,21 @@ def set_curr_len_gp_stats(curr_len_gp_stats, curr_len_gp_seqs, depth_max_pctl, d
     curr_len_gp_stats['max_depth_pctl_rank_in_est'] = depth_max_pctl_rank
     return curr_len_gp_stats
 
-def val_to_grid_idx(val, grid_density, minval):
-    return (grid_density * (val - minval))
+# Assume variance should only be estimated 1. Directly from observations around peak (mode), and 2. Only if it is <= m, m being the mode depth of the longest sequences.
+# (2) is because variance is more likely to be overestimated from observations around a peak with a location > m, which are likely to include a relatively high proportion of
+# sequences from copy# components other than those from the component represented by the peak
+def variance_from_curve(len_group_mode, mode, longest_seqs_mode1_copynum, mode_error):
+    ratio = len_group_mode / mode
+    half_mode_error = 0.5 * mode_error
+    ret = (ratio >= (0.5 - half_mode_error) and ratio <= (0.5 + half_mode_error))
+    if longest_seqs_mode1_copynum == 1:
+        return (ret or (ratio >= (1 - mode_error) and ratio <= (1 + mode_error)))
+    return ret
+
+# Fit linearised exponential decay: sigma = A * exp(K * length_median) => log(sigma) = K * length_median + log(A)
+def guess_next_sigma(length_median, length_medians, sigmas):
+    K, log_A = np.polyfit(length_medians, np.log(sigmas), 1)
+    return m.exp(K * length_median + log_A)
 
 def get_min_density_depth_candidate(depths, density, grid_min, kde_grid_density):
     # hopefully universally effective heuristic to avoid inappropriately applying to very narrow depth distributions
@@ -90,6 +106,9 @@ def get_len_group_mode(min_density_depth_candidate, density, grid_min, kde_grid_
 def get_approx_component_obs(data, mode, half, data_min): # assumes symmetric distribution
     return data[(data >= max(data_min, mode - half)) & (data <= mode + half)]
 
+def get_density_for_idx(idx, density):
+    return (density[m.floor(idx)] + (idx - m.floor(idx)) * (density[m.ceil(idx)] - density[m.floor(idx)]))
+
 def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, density_ECDF):
     if (0.5 * mode) <= depths[0]:
         density_at_modes, cdf_at_modes = [0], [0]
@@ -113,8 +132,37 @@ def get_gamma_min_cdf(copynums_in_90thpctl_mode_diff):
     len_group_mode_pctl_rank = stats.percentileofscore(depths, len_group_mode)
     return ((len_group_mode_pctl_rank + ((90.0 - len_group_mode_pctl_rank) / m.pow(copynums_in_90thpctl_mode_diff, 1/3))) / 100.0)
 
-def get_density_for_idx(idx, density):
-    return (density[m.floor(idx)] + (idx - m.floor(idx)) * (density[m.ceil(idx)] - density[m.floor(idx)]))
+def get_component_params(prefix, params):
+    if re.match('gauss', prefix):
+        return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value, None, None, None)
+    return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value), params['gamma_loc'].value, params['gamma_shape'].value, params['gamma_scale'].value)
+
+def compute_gaussian_density_at(x, prefix, params):
+    wt, mean, sigma = get_component_params(prefix, params)[:3]
+    return wt * stats.norm.pdf(x, mean, sigma)
+
+def compute_density_at(x, prefix, params):
+    if re.match('gauss', prefix):
+        return compute_gaussian_density_at(x, prefix, params)
+    return params['gamma_wt_c'] * stats.gamma.pdf(x, params['gamma_shape'], params['gamma_loc'], params['gamma_scale'])
+
+def compute_likeliest_copynum_at(x, prefixes, smallest_copynum, use_gamma, include_half, params, empirical_dens = None):
+    densities = [0] * (len(prefixes) + int(smallest_copynum == 1))
+    if not(include_half) and len(densities) == 1:
+        densities.append(0)
+    if 'gauss1_' in prefixes: # should always be True
+        densities[1] = compute_density_at(x, 'gauss1_', params)
+    if smallest_copynum == 0.5:
+        densities[int(not(include_half))] += compute_density_at(x, 'gausshalf_', params)
+    for i in range(2, len(densities) - int(use_gamma)):
+        densities[i] = compute_density_at(x, 'gauss' + str(i) + '_', params)
+    if use_gamma:
+        densities[i+1] = compute_density_at(x, 'gamma_', params)
+    maxdens_idx = np.argmax(densities)
+    if empirical_dens:
+        if empirical_dens - sum(densities) > densities[maxdens_idx]:
+            return 0
+    return (maxdens_idx or 0.5)
 
 def get_component_weights(density_at_modes, use_gamma = False, cdf_at_modes = None, next_mode_cdf = None):
     if use_gamma:
@@ -168,6 +216,9 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
 def init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums):
     copynum_components = init_dummy_model()
     return init_gaussians([], component_weights, copynum_components, init_params(copynum_components), param_guesses, smallest_copynum, max_gaussian_copynums)
+
+def gamma(x, shape, loc, scale):
+    return stats.gamma.pdf(x, shape, loc, scale)
 
 def init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error):
     gamma_model = Model(gamma, prefix='gamma_')
@@ -340,6 +391,10 @@ def assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_a
         idx = m.floor(copynum_assnmts[i])
         seqs.loc[gp_len_condition & (seqs.mean_kmer_depth >= copynum_lbs[idx]) & (seqs.mean_kmer_depth < copynum_ubs[idx]), 'likeliest_copynum'] = copynum_assnmts[i]
 
+def add_to_copynum_stats(data, cols, stats_hash):
+    for i in range(len(data)):
+        stats_hash[cols[i]].append(data[i])
+
 def create_copynum_stats(smallest_copynum, use_gamma, include_half, params, component_prefixes, copynum_stats_hash):
     wt, mean, sigma = 0, 0, 0
     wt_i, mean_i, sigma_i = 0, 0, 0
@@ -373,61 +428,6 @@ def write_to_log(log_file, len_gp_idx, minlen, maxlen, maxdepth, depth_max_pctl,
     log_file.write('Fit report:\n')
     log_file.write(fit_report)
     log_file.write('\n\n')
-
-def gamma(x, shape, loc, scale):
-    return stats.gamma.pdf(x, shape, loc, scale)
-
-def add_to_copynum_stats(data, cols, stats_hash):
-    for i in range(len(data)):
-        stats_hash[cols[i]].append(data[i])
-
-# Assume variance should only be estimated 1. Directly from observations around peak (mode), and 2. Only if it is <= m, m being the mode depth of the longest sequences.
-# (2) is because variance is more likely to be overestimated from observations around a peak with a location > m, which are likely to include a relatively high proportion of
-# sequences from copy# components other than those from the component represented by the peak
-def variance_from_curve(len_group_mode, mode, longest_seqs_mode1_copynum, mode_error):
-    ratio = len_group_mode / mode
-    half_mode_error = 0.5 * mode_error
-    ret = (ratio >= (0.5 - half_mode_error) and ratio <= (0.5 + half_mode_error))
-    if longest_seqs_mode1_copynum == 1:
-        return (ret or (ratio >= (1 - mode_error) and ratio <= (1 + mode_error)))
-    return ret
-
-# Fit linearised exponential decay: sigma = A * exp(K * length_median) => log(sigma) = K * length_median + log(A)
-def guess_next_sigma(length_median, length_medians, sigmas):
-    K, log_A = np.polyfit(length_medians, np.log(sigmas), 1)
-    return m.exp(K * length_median + log_A)
-
-def get_component_params(prefix, params):
-    if re.match('gauss', prefix):
-        return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value, None, None, None)
-    return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value), params['gamma_loc'].value, params['gamma_shape'].value, params['gamma_scale'].value)
-
-def compute_gaussian_density_at(x, prefix, params):
-    wt, mean, sigma = get_component_params(prefix, params)[:3]
-    return wt * stats.norm.pdf(x, mean, sigma)
-
-def compute_density_at(x, prefix, params):
-    if re.match('gauss', prefix):
-        return compute_gaussian_density_at(x, prefix, params)
-    return params['gamma_wt_c'] * stats.gamma.pdf(x, params['gamma_shape'], params['gamma_loc'], params['gamma_scale'])
-
-def compute_likeliest_copynum_at(x, prefixes, smallest_copynum, use_gamma, include_half, params, empirical_dens = None):
-    densities = [0] * (len(prefixes) + int(smallest_copynum == 1))
-    if not(include_half) and len(densities) == 1:
-        densities.append(0)
-    if 'gauss1_' in prefixes: # should always be True
-        densities[1] = compute_density_at(x, 'gauss1_', params)
-    if smallest_copynum == 0.5:
-        densities[int(not(include_half))] += compute_density_at(x, 'gausshalf_', params)
-    for i in range(2, len(densities) - int(use_gamma)):
-        densities[i] = compute_density_at(x, 'gauss' + str(i) + '_', params)
-    if use_gamma:
-        densities[i+1] = compute_density_at(x, 'gamma_', params)
-    maxdens_idx = np.argmax(densities)
-    if empirical_dens:
-        if empirical_dens - sum(densities) > densities[maxdens_idx]:
-            return 0
-    return (maxdens_idx or 0.5)
 
 
 argparser = argparse.ArgumentParser(description='Estimate genomic copy number for haploid or diploid whole-genome shotgun assembly sequences')
