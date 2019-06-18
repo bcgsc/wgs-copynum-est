@@ -354,10 +354,14 @@ def get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, d
         nonzero = eval_copynum_at(depths[i], nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
     return (likeliest_copynums, likeliest_copynum_ubs)
 
-def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, component_prefixes, smallest_copynum):
+def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, component_prefixes, smallest_copynum, include_half):
     copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
+    # Note: 0 does not have an entry in copynum_lbs and copynum_ubs.
     copynum_lbs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
     copynum_ubs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
+    if (len(copynum_lbs) == 1) and not(include_half):
+        copynum_lbs.append(np.inf)
+        copynum_ubs.append(np.inf)
     if copynum_assnmts[0] > 0:
         copynum_lbs[m.floor(copynum_assnmts[0])] = 0
     # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
@@ -382,7 +386,7 @@ def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, compon
 def assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs):
     seqs.loc[gp_len_condition, 'modex'] = seqs.loc[gp_len_condition].mean_kmer_depth / mode
     seqs.loc[gp_len_condition, 'est_gp'] = len_gp_idx
-    # Note: 1. copynum_lbs[i] == copynum_ubs[i-1]. 2. 0 does not have an entry in copynum_lbs and copynum_ubs.
+    # Note: copynum_lbs[i] == copynum_ubs[i-1]
     if len(copynum_assnmts) > 1:
         seqs.loc[gp_len_condition & (seqs.mean_kmer_depth < copynum_lbs[m.floor(copynum_assnmts[1])]), 'likeliest_copynum'] = copynum_assnmts[0]
     else:
@@ -541,7 +545,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         use_gamma = ('gamma_' in copynum_component_prefixes)
         smallest_copynum = get_smallest_copynum(copynum_component_prefixes)
         len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
-        len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = len(copynum_component_prefixes) - int(smallest_copynum == 0.5)
+        len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = (len(copynum_component_prefixes) - int(smallest_copynum == 0.5)) or 0.5
 
         smallest_copynum_prefix = set_smallest_copynum_prefix(smallest_copynum)
         if mode_max == np.inf:
@@ -565,7 +569,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         likeliest_copynums, likeliest_copynum_ubs = get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, density, copynum_component_prefixes,
                                                                                    smallest_copynum, use_gamma, args.half, result.params)
         # Initial assignments might be slightly out of order: have to infer orderly final assignments
-        copynum_assnmts, copynum_lbs, copynum_ubs = assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynum_component_prefixes, smallest_copynum)
+        copynum_assnmts, copynum_lbs, copynum_ubs = assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynum_component_prefixes, smallest_copynum, args.half)
         # Assign to sequences in the corresponding ranges
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
         assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs)
