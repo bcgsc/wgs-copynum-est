@@ -416,13 +416,13 @@ def create_copynum_stats(smallest_copynum, use_gamma, include_half, params, comp
         wt_normed, wt_i_normed = wt/wt1, wt_i/wt1
         mean1 = (wt_normed * mean) + (wt_i_normed * mean_i)
         sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
-        add_to_copynum_stats(get_copynum_stats_data(1, wt1, mean1, sigma1, has_copynum1), COPYNUM_STATS_COLS, copynum_stats_hash)
+        add_to_copynum_stats(get_copynum_stats_data(1, wt1, mean1, sigma1), COPYNUM_STATS_COLS, copynum_stats_hash)
     for i in range(2, len(component_prefixes) - int(smallest_copynum < 1) - int(use_gamma) + 1):
         wt, mean, sigma = get_component_params('gauss' + str(i) + '_', params)[:3]
-        add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma, has_copynum1), COPYNUM_STATS_COLS, copynum_stats_hash)
+        add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
     if use_gamma:
         wt, mean, sigma, loc, shape, scale = get_component_params('gamma_', params)
-        add_to_copynum_stats(get_copynum_stats_data(i + 1, wt, mean, sigma, has_copynum1, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
+        add_to_copynum_stats(get_copynum_stats_data(i + 1, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
 
 def write_to_log(log_file, len_gp_idx, minlen, maxlen, maxdepth, depth_max_pctl, depth_max_pctl_rank, fit_report):
     log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
@@ -574,10 +574,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
         assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs)
 
-        def get_copynum_stats_data(idx, wt, mean, sigma, has_copynum1 = True, loc = None, shape = None, scale = None): # copy number idx
-            lb_idx, ub_idx = m.floor(idx), m.floor(idx)
-            if not(args.half) and idx == 1:
-                lb_idx, ub_idx = 0, int(has_copynum1)
+        def get_copynum_stats_data(idx, wt, mean, sigma, loc = None, shape = None, scale = None): # copy number idx
             return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[m.floor(idx)], copynum_ubs[m.floor(idx)], wt, mean, sigma, loc, shape, scale]
 
         create_copynum_stats(smallest_copynum, use_gamma, args.half, result.params, copynum_component_prefixes, copynum_stats_hash)
