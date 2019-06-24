@@ -118,4 +118,4 @@ $ <HOME>/scripts/utils/compute-stats-loop.sh
 $ cd ..
 $ mkdir plots
 $ cd plots
-$ python <HOME>/scripts/results/plotting/component-densities.py ../full/<seq_aln_and_est> <density_plot_files_prefix> [../summary/<est_len_gp_stats>] [--copynum_stats_file ../summary/<copynum_stats_file>]
+$ python <HOME>/scripts/results/plotting/component-densities.py [--copynum_stats_file ../summary/<copynum_stats_file>] ../full/<seq_aln_and_est> <plots_file_prefix> [../summary/<est_len_gp_stats>]
