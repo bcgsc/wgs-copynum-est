@@ -278,9 +278,9 @@ def setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, le
     sigma, sigma_min = param_guesses['sigma'], param_guesses['sigma_min']
     density_ECDF = ECDF(depths)
     density_at_modes, cdf_at_modes = setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, density_ECDF)
-    i, use_gamma, vary_copynum = len(density_at_modes) - 1, False, False
+    i, use_gamma = len(density_at_modes) - 1, False
+    vary_copynum = int(i > 1)
     if (i > 1) and ((i + 1) * mode <= depths[-1]):
-        vary_copynum = True
         copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
         gamma_min_density_ratio = get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff)
         gamma_min_cdf = get_gamma_min_cdf(copynums_in_90thpctl_mode_diff)
