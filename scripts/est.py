@@ -135,6 +135,8 @@ def get_gamma_min_cdf(copynums_in_90thpctl_mode_diff):
 def get_component_params(prefix, params):
     if re.match('gauss', prefix):
         return (params[prefix + 'amplitude'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value, None, None, None)
+    elif re.match('cgauss', prefix):
+        return (params[prefix + 'amplitude1'].value + params[prefix + 'ampdiff'].value, params[prefix + 'center'].value, params[prefix + 'sigma'].value, None, None, None)
     return (params['gamma_wt_c'].value, params['gamma_mean'].value, m.sqrt(params['gamma_variance'].value), params['gamma_loc'].value, params['gamma_shape'].value, params['gamma_scale'].value)
 
 def compute_gaussian_density_at(x, prefix, params):
@@ -142,20 +144,34 @@ def compute_gaussian_density_at(x, prefix, params):
     return wt * stats.norm.pdf(x, mean, sigma)
 
 def compute_density_at(x, prefix, params):
-    if re.match('gauss', prefix):
+    if re.match('c?gauss', prefix):
         return compute_gaussian_density_at(x, prefix, params)
     return params['gamma_wt_c'] * stats.gamma.pdf(x, params['gamma_shape'], params['gamma_loc'], params['gamma_scale'])
 
-def compute_likeliest_copynum_at(x, prefixes, smallest_copynum, use_gamma, include_half, params, empirical_dens = None):
+def get_gaussian_prefix(copynum, prefixes):
+    if copynum == 0.5:
+        return 'gausshalf_'
+    prefix = 'gauss' + str(copynum) + '_'
+    if prefix in prefixes:
+        return prefix
+    elif ('c' + prefix) in prefixes:
+        return ('c' + prefix)
+    return None
+
+def compute_likeliest_copynum_at(x, prefixes, smallest_copynum, mode_copynum_ub, use_gamma, include_half, params, empirical_dens = None):
     densities = [0] * (len(prefixes) + int(smallest_copynum == 1))
     if not(include_half) and len(densities) == 1:
         densities.append(0)
-    if 'gauss1_' in prefixes: # should always be True
-        densities[1] = compute_density_at(x, 'gauss1_', params)
+    # There should always be a copy-number-1 component if mode of longest sequences represents copy # 1
+    g1_prefix = get_gaussian_prefix(1, prefixes)
+    if g1_prefix:
+        densities[1] = compute_density_at(x, g1_prefix, params)
     if smallest_copynum == 0.5:
         densities[int(not(include_half))] += compute_density_at(x, 'gausshalf_', params)
-    for i in range(2, len(densities) - int(use_gamma)):
+    for i in range(2, m.ceil(mode_copynum_ub) + 1):
         densities[i] = compute_density_at(x, 'gauss' + str(i) + '_', params)
+    for i in range(m.ceil(mode_copynum_ub) + 1, len(densities) - int(use_gamma)):
+        densities[i] = compute_density_at(x, 'cgauss' + str(i) + '_', params)
     if use_gamma:
         densities[i+1] = compute_density_at(x, 'gamma_', params)
     maxdens_idx = np.argmax(densities)
@@ -179,14 +195,22 @@ def init_dummy_model():
     dummy.set_param_hint('c', value=0, vary=False)
     return dummy
 
-def init_gaussian(i, component_weights):
+def gaussian(x, amplitude1, ampdiff, center, sigma):
+    return ((amplitude1 + ampdiff) * stats.norm.pdf(x, center, sigma))
+
+# 'cgauss': custom Gaussian, to enforce decreasing weights after max-density depth
+def init_gaussian(i, component_weights, mode_copynum_ub):
     model = None
     if component_weights[m.floor(i)] > 0:
         numstr = str(i)
         if i < 1:
             numstr = 'half'
-        prefix = 'gauss' + numstr + '_'
-        model = GaussianModel(prefix=prefix)
+        if i > mode_copynum_ub:
+            prefix = 'cgauss' + numstr + '_'
+            model = Model(gaussian, prefix=prefix)
+        else:
+            prefix = 'gauss' + numstr + '_'
+            model = GaussianModel(prefix=prefix)
     return model
 
 def init_params(model):
@@ -194,11 +218,18 @@ def init_params(model):
     params.update(model.make_params())
     return params
 
-def init_gaussians(components, component_weights, copynum_components, params, param_guesses, smallest_copynum, max_gaussian_copynums):
+def get_mode_copynum_ub(len_group_mode, mode):
+    mode_copynum = len_group_mode * 1.0 / mode
+    mode_copynum_ub = round(mode_copynum)
+    if mode_copynum < 0.75:
+        mode_copynum_ub = 0.5
+    return mode_copynum_ub
+
+def init_gaussians(components, component_weights, copynum_components, params, param_guesses, len_gp_mode_copynum_ub, smallest_copynum, max_gaussian_copynums):
     mode, mode_min, mode_max = param_guesses['mode'], param_guesses['mode_min'], param_guesses['mode_max']
     sigma, sigma_min = param_guesses['sigma'], param_guesses['sigma_min']
     for j in [0.5] + list(range(1, m.floor(max_gaussian_copynums) + 1)):
-        model = init_gaussian(j, component_weights)
+        model = init_gaussian(j, component_weights, len_gp_mode_copynum_ub)
         components.append(model)
         if model:
             copynum_components = copynum_components + model
@@ -210,12 +241,22 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
             else:
                 params[model.prefix + 'center'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'center')
                 params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
-            params[model.prefix + 'amplitude'].set(value = component_weights[m.floor(j)], min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
+            if re.search(r'^cgauss', model.prefix):
+                if re.search(r'^cgauss', components[-2].prefix):
+                    params[model.prefix + 'amplitude1'].set(vary = False, expr = components[-2].prefix + 'amplitude1 + ' + components[-2].prefix + 'ampdiff')
+                else:
+                    params[model.prefix + 'amplitude1'].set(vary = False, expr = components[-2].prefix + 'amplitude')
+                diffval = component_weights[j] - component_weights[j-1]
+                if diffval > 0:
+                    diffval = -0.05
+                params[model.prefix + 'ampdiff'].set(value = diffval, max = 0)
+            else:
+                params[model.prefix + 'amplitude'].set(value = component_weights[m.floor(j)], min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
     return (components, copynum_components, params)
 
-def init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums):
+def init_components_and_params(component_weights, param_guesses, len_gp_mode_copynum_ub, smallest_copynum, max_gaussian_copynums):
     copynum_components = init_dummy_model()
-    return init_gaussians([], component_weights, copynum_components, init_params(copynum_components), param_guesses, smallest_copynum, max_gaussian_copynums)
+    return init_gaussians([], component_weights, copynum_components, init_params(copynum_components), param_guesses, len_gp_mode_copynum_ub, smallest_copynum, max_gaussian_copynums)
 
 def gamma(x, shape, loc, scale):
     return stats.gamma.pdf(x, shape, loc, scale)
@@ -245,15 +286,23 @@ def init_genome_scale_model(params, model_const):
     params.update(genome_scale_model.make_params(c=model_const))
     return genome_scale_model
 
-def finalise_params(params, components, smallest_copynum, use_gamma):
+def finalise_params(params, components, smallest_copynum, len_gp_mode_copynum_ub, use_gamma):
     if len(components) - 1 == m.floor(smallest_copynum):
         params[components[m.floor(smallest_copynum)].prefix + 'amplitude'].set(value = 1.0, vary=False)
     else:
-        wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[m.floor(smallest_copynum):-1]))
+        wt_expr = '1 - ' + ' - '.join(map(lambda c: c.prefix + 'amplitude', components[m.floor(smallest_copynum):min(m.floor(len_gp_mode_copynum_ub) + 1, len(components) - 1)]))
+        cgauss_wts = list(map(lambda c: c.prefix + 'amplitude1 - ' + c.prefix + 'ampdiff', components[(m.floor(len_gp_mode_copynum_ub) + 1):-1]))
+        if len(cgauss_wts):
+            wt_expr += ' - ' + ' - '.join(cgauss_wts)
         wt_param = components[-1].prefix + 'amplitude'
+        wt_min, wt_max = NONNEG_CONSTANT, 1 - NONNEG_CONSTANT
         if use_gamma:
             wt_param = 'gamma_wt_c'
-        params[wt_param].set(expr = wt_expr, min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
+        elif len_gp_mode_copynum_ub < len(components) - 1:
+            wt_expr += ' - ' + components[-1].prefix + 'amplitude1'
+            wt_param = components[-1].prefix + 'ampdiff'
+            wt_min, wt_max = NONNEG_CONSTANT - 1, 0
+        params[wt_param].set(expr = wt_expr, min = wt_min, max = wt_max)
     return params
 
 def fit(depths, mixture_model, params):
@@ -268,9 +317,9 @@ def fit(depths, mixture_model, params):
     lmfit_range = np.arange(lb, ub, step)
     return mixture_model.fit(np.histogram(depths, lmfit_range)[0], params, x=lmfit_range[1:])
 
-def finalise_and_fit(components, copynum_components, params, smallest_copynum, use_gamma, depths_size):
+def finalise_and_fit(components, copynum_components, params, smallest_copynum, len_gp_mode_copynum_ub, use_gamma, depths_size):
     mixture_model = init_genome_scale_model(params, depths_size) * copynum_components
-    params = finalise_params(params, components, smallest_copynum, use_gamma)
+    params = finalise_params(params, components, smallest_copynum, len_gp_mode_copynum_ub, use_gamma)
     return fit(depths, mixture_model, params)
 
 def setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, len_group_mode, mode_error):
@@ -305,29 +354,37 @@ def setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, le
         if density_at_modes[1] == 0:
             raise RuntimeError
         smallest_copynum = 1
+    len_gp_mode_copynum_ub = get_mode_copynum_ub(len_group_mode, mode)
     aic = np.inf
     for j in range(i, lb, -1):
         next_mode_cdf = (use_gamma and (((j == i) and density_ECDF([(j + 1) * mode])[0]) or cdf_at_modes[j+1])) or None
         component_weights = get_component_weights(density_at_modes[:(j+1)], use_gamma, cdf_at_modes[:(j+1)], next_mode_cdf)
         max_gaussian_copynums = max(0.5, int(depths[-1] > mode) * len(component_weights) - 1 - int(use_gamma))
-        components, copynum_components, params = init_components_and_params(component_weights, param_guesses, smallest_copynum, max_gaussian_copynums)
+        components, copynum_components, params = init_components_and_params(component_weights, param_guesses, len_gp_mode_copynum_ub, smallest_copynum, max_gaussian_copynums)
         if use_gamma:
             components, copynum_components, params = init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error)
         # Finally estimate copy numbers using lmfit
-        result_temp = finalise_and_fit(components, copynum_components, params, smallest_copynum, use_gamma, depths.size)
+        result_temp = finalise_and_fit(components, copynum_components, params, smallest_copynum, len_gp_mode_copynum_ub, use_gamma, depths.size)
         if (result_temp.aic / aic) < 1 + min(0.025, 0.005 * (i - 3)): # slight penalty for higher # of components, increasing with i ("base" #)
             result, aic = result_temp, result_temp.aic
     return result
 
 def get_smallest_copynum(prefixes):
-    if 'gausshalf_' in prefixes:
+    if ('gausshalf_' in prefixes) or ('cgausshalf_' in prefixes):
         return 0.5
     return 1
 
-def set_smallest_copynum_prefix(smallest_copynum):
+def get_mode_copynum_ub_from_prefixes(prefixes):
+    numgauss_prefixes = { p for p in prefixes if re.search(r'^gauss(half|\d+)_', p) }
+    sorted_gauss_copynums = sorted(map(lambda p: int(re.search(r'gauss(\d+)_', p).group(1)), numgauss_prefixes - {'gausshalf_'}))
+    if sorted_gauss_copynums:
+        return sorted_gauss_copynums[-1]
+    return 0.5
+
+def set_smallest_copynum_prefix(smallest_copynum, prefixes):
     if smallest_copynum == 0.5:
         return 'gausshalf_'
-    return ('gauss' + str(smallest_copynum) + '_')
+    return get_gaussian_prefix(smallest_copynum, prefixes)
 
 # Set mode the first time, i.e. from estimation and classification of longest sequences
 def set_mode(mode_val, mode_error, smallest_copynum):
@@ -344,21 +401,22 @@ def set_sigma_min(sigma_result, smallest_copynum, mode_error):
 def get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, density, component_prefixes, smallest_copynum, use_gamma, include_half, params):
     likeliest_copynums, likeliest_copynum_ubs = [], []
     depth, step = grid_min + offset, 0.02
+    mode_copynum_ub = get_mode_copynum_ub_from_prefixes(component_prefixes)
     empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
-    copynum = compute_likeliest_copynum_at(depth, component_prefixes, smallest_copynum, use_gamma, include_half, params, empirical_dens)
+    copynum = compute_likeliest_copynum_at(depth, component_prefixes, smallest_copynum, mode_copynum_ub, use_gamma, include_half, params, empirical_dens)
     nonzero = (copynum > 0)
     likeliest_copynums.append(copynum)
     for depth in np.arange(depth + step, depths[0], step):
-        nonzero = eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
+        nonzero = eval_copynum_at(depth, nonzero, mode_copynum_ub, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
     for i in range(len(depths)):
-        nonzero = eval_copynum_at(depths[i], nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
+        nonzero = eval_copynum_at(depths[i], nonzero, mode_copynum_ub, likeliest_copynums, likeliest_copynum_ubs, empirical_dens)
     return (likeliest_copynums, likeliest_copynum_ubs)
 
 def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, component_prefixes, smallest_copynum, include_half):
     copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
     # Note: 0 does not have an entry in copynum_lbs and copynum_ubs.
-    copynum_lbs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
-    copynum_ubs = [np.inf] * (len(copynum_component_prefixes) + int(smallest_copynum == 1))
+    copynum_lbs = [np.inf] * (len(component_prefixes) + int(smallest_copynum == 1))
+    copynum_ubs = [np.inf] * (len(component_prefixes) + int(smallest_copynum == 1))
     if (len(copynum_lbs) == 1) and not(include_half):
         copynum_lbs.append(np.inf)
         copynum_ubs.append(np.inf)
@@ -402,11 +460,12 @@ def add_to_copynum_stats(data, cols, stats_hash):
 def create_copynum_stats(smallest_copynum, use_gamma, include_half, params, component_prefixes, copynum_stats_hash):
     wt, mean, sigma = 0, 0, 0
     wt_i, mean_i, sigma_i = 0, 0, 0
+    mode_copynum_ub = get_mode_copynum_ub_from_prefixes(component_prefixes)
     if smallest_copynum < 1:
         wt, mean, sigma = get_component_params('gausshalf_', params)[:3]
-    has_copynum1 = (smallest_copynum == 1) or next((True for p in component_prefixes if re.search(r'gauss1', p)), False)
+    has_copynum1 = (smallest_copynum == 1) or next((True for p in component_prefixes if re.match('c?gauss1', p)), False)
     if has_copynum1:
-        wt_i, mean_i, sigma_i = get_component_params('gauss1_', params)[:3]
+        wt_i, mean_i, sigma_i = get_component_params(((mode_copynum_ub == 0.5) * 'c') + 'gauss1_', params)[:3]
     if include_half:
         add_to_copynum_stats(get_copynum_stats_data(0.5, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
         if has_copynum1:
@@ -418,7 +477,8 @@ def create_copynum_stats(smallest_copynum, use_gamma, include_half, params, comp
         sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
         add_to_copynum_stats(get_copynum_stats_data(1, wt1, mean1, sigma1), COPYNUM_STATS_COLS, copynum_stats_hash)
     for i in range(2, len(component_prefixes) - int(smallest_copynum < 1) - int(use_gamma) + 1):
-        wt, mean, sigma = get_component_params('gauss' + str(i) + '_', params)[:3]
+        prefix = (i > mode_copynum_ub) * 'c' + 'gauss' + str(i) + '_'
+        wt, mean, sigma = get_component_params((i > mode_copynum_ub) * 'c' + 'gauss' + str(i) + '_', params)[:3]
         add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
     if use_gamma:
         wt, mean, sigma, loc, shape, scale = get_component_params('gamma_', params)
@@ -547,18 +607,18 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
         len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = (len(copynum_component_prefixes) - int(smallest_copynum == 0.5)) or 0.5
 
-        smallest_copynum_prefix = set_smallest_copynum_prefix(smallest_copynum)
+        smallest_copynum_prefix = set_smallest_copynum_prefix(smallest_copynum, copynum_component_prefixes)
         if mode_max == np.inf:
             mode, mode_min, mode_max = set_mode(result.params[smallest_copynum_prefix + 'center'].value, mode_error, smallest_copynum)
         sigma_min = set_sigma_min(result.params[smallest_copynum_prefix + 'sigma'], smallest_copynum, mode_error)
         length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
 
         # Compute copy# component boundaries (enough to classify observations; may not be technically accurate [i.e. at population level])
-        def eval_copynum_at(depth, nonzero, likeliest_copynums, likeliest_copynum_ubs, empirical_dens):
+        def eval_copynum_at(depth, nonzero, mode_copynum_ub, likeliest_copynums, likeliest_copynum_ubs, empirical_dens):
             empirical_dens = None
             if not(nonzero):
                 empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
-            copynum = compute_likeliest_copynum_at(depth, copynum_component_prefixes, smallest_copynum, use_gamma, args.half, result.params, empirical_dens)
+            copynum = compute_likeliest_copynum_at(depth, copynum_component_prefixes, smallest_copynum, mode_copynum_ub, use_gamma, args.half, result.params, empirical_dens)
             if copynum != likeliest_copynums[-1]:
                 if copynum > 0:
                     nonzero = True
