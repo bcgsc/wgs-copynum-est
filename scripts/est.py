@@ -128,7 +128,7 @@ def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_mi
 def get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff):
     return (0.65 + min(copynums_in_90thpctl_mode_diff / 40, 1) * 0.2)
 
-def get_gamma_min_cdf(copynums_in_90thpctl_mode_diff):
+def get_gamma_min_cdf(depths, len_group_mode, copynums_in_90thpctl_mode_diff):
     len_group_mode_pctl_rank = stats.percentileofscore(depths, len_group_mode)
     return ((len_group_mode_pctl_rank + ((90.0 - len_group_mode_pctl_rank) / m.pow(copynums_in_90thpctl_mode_diff, 1/3))) / 100.0)
 
@@ -332,7 +332,7 @@ def setup_and_fit(depths, density, grid_min, kde_grid_density, param_guesses, le
     if (i > 1) and ((i + 1) * mode <= depths[-1]):
         copynums_in_90thpctl_mode_diff = (np.percentile(depths, 90) - len_group_mode) * 1.0 / mode
         gamma_min_density_ratio = get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff)
-        gamma_min_cdf = get_gamma_min_cdf(copynums_in_90thpctl_mode_diff)
+        gamma_min_cdf = get_gamma_min_cdf(depths, len_group_mode, copynums_in_90thpctl_mode_diff)
         density_ratio = density_at_modes[-1] / density_at_modes[-2]
         while (cdf_at_modes[-1] < 0.95) and (density_ratio > 0.1):
             i += 1
