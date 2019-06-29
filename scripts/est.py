@@ -48,8 +48,8 @@ def get_length_gps_for_est(seqs, len_percentiles_uniq, bin_minsize):
     length_gps.reverse()
     return length_gps
 
-def val_to_grid_idx(val, minval, density):
-    return (density * (val - minval))
+def val_to_grid_idx(val, grid_density, minval):
+    return (grid_density * (val - minval))
 
 def grid_idx_to_val(idx, grid_density, minval):
     return ((idx / grid_density) + minval)
@@ -212,7 +212,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         grid_max = depth_max_pctl + offset # also seems like a decent heuristic
         kde_grid_density = 20
         grid_min = depths[0] - offset
-        kde_grid = np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, grid_min, kde_grid_density) + 1)
+        kde_grid = np.linspace(grid_min, grid_max, val_to_grid_idx(grid_max, kde_grid_density, grid_min) + 1)
         density = kde.evaluate(kde_grid)
 
         len_gp_stats[longest_seqs_mode1_copynum].loc[len_gp_idx, 'count'] = length_gps_for_est[len_gp_idx].shape[0]
@@ -227,8 +227,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
         # hopefully universally effective heuristic to avoid inappropriately applying to very narrow depth distributions
         # location of min., if any, between error distribution and mode not likely to be lower than this; and if it is, hopefully little harm done being off by < 1
         if depths[0] + 1 < np.percentile(depths, 10):
-            soft_lb_idx = m.ceil(val_to_grid_idx(depths[0] + 1, grid_min, kde_grid_density))
-            min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:m.floor(val_to_grid_idx(np.percentile(depths, 20), grid_min, kde_grid_density))])
+            soft_lb_idx = m.ceil(val_to_grid_idx(depths[0] + 1, kde_grid_density, grid_min))
+            min_density_depth_idx_1 = soft_lb_idx + np.argmin(density[soft_lb_idx:m.floor(val_to_grid_idx(np.percentile(depths, 20), kde_grid_density, grid_min))])
 
         # condition mostly to exclude cases without perceptible error distribution, i.e. most cases, except small genomes
         if min_density_depth_idx_1 > 0 and np.mean(density[:min_density_depth_idx_1]) > density[min_density_depth_idx_1]:
@@ -261,13 +261,13 @@ for longest_seqs_mode1_copynum in [1, 2]:
         elif mode <= depths[0]:
             component_weights[1] = 0
             # likely slight overestimate if length group has copy-number 3 sequences
-            component_weights[2] = get_density_for_idx(val_to_grid_idx(2 * mode, grid_min, kde_grid_density), density) * 2 * sigma_sqrt_2pi
+            component_weights[2] = get_density_for_idx(val_to_grid_idx(2 * mode, kde_grid_density, grid_min), density) * 2 * sigma_sqrt_2pi
         else:
             cpnum_density_2at1 = 0.5 * sigma_sqrt_2pi_reciprocal * stats.norm.pdf(mode, 2*mode, 2*sigma)
             cpnum_density_1at2 = sigma_sqrt_2pi_reciprocal * stats.norm.pdf(2*mode, mode, sigma)
             cpnum_densities_j_at_i = np.array([[sigma_sqrt_2pi_reciprocal, cpnum_density_2at1], [2 * cpnum_density_1at2, 0.5 * sigma_sqrt_2pi_reciprocal]])
-            density_obs_at_mean1 = get_density_for_idx(val_to_grid_idx(mode, grid_min, kde_grid_density), density)
-            density_obs_at_mean2 = get_density_for_idx(val_to_grid_idx(mode*2, grid_min, kde_grid_density), density)
+            density_obs_at_mean1 = get_density_for_idx(val_to_grid_idx(mode, kde_grid_density, grid_min), density)
+            density_obs_at_mean2 = get_density_for_idx(val_to_grid_idx(mode*2, kde_grid_density, grid_min), density)
             component_weights[1], component_weights[2] = np.linalg.solve(cpnum_densities_j_at_i, np.array([density_obs_at_mean1, density_obs_at_mean2]))
 
         smallest_copynum = 1
@@ -284,8 +284,8 @@ for longest_seqs_mode1_copynum in [1, 2]:
             if component_weights[1] == 0:
                 hetero_to_homozg_maxdens += 1
             else:
-                start = m.ceil(val_to_grid_idx(max(depths[0], (1 - mode_error) * mode), grid_min, kde_grid_density))
-                end = m.ceil(val_to_grid_idx(min(depths[-1], (1 + mode_error) * 2 * mode), grid_min, kde_grid_density))
+                start = m.ceil(val_to_grid_idx(max(depths[0], (1 - mode_error) * mode), kde_grid_density, grid_min))
+                end = m.ceil(val_to_grid_idx(min(depths[-1], (1 + mode_error) * 2 * mode), kde_grid_density, grid_min))
                 maxdens = grid_idx_to_val(start + np.argmax(density[start:end]), kde_grid_density, grid_min)
                 ratio = maxdens / mode
                 if (ratio >= 2 * (1 - mode_error)) and (ratio <= 2 * (1 + mode_error)):
@@ -299,7 +299,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
             if (i + 2) * mode < depths[-1]:
                 adjacent = 2 # Another heuristic: assume density of preceding and following components equal at current mode (mean)
             adjacent_density = adjacent * component_weights[i] * stats.norm.pdf((i + 1) * mode, i * mode, i * sigma)
-            density_next_mode = max(0, get_density_for_idx(val_to_grid_idx((i + 1) * mode, grid_min, kde_grid_density), density) - adjacent_density)
+            density_next_mode = max(0, get_density_for_idx(val_to_grid_idx((i + 1) * mode, kde_grid_density, grid_min), density) - adjacent_density)
             if density_next_mode == 0:
                 break
             component_weights.append((i + 1) * sigma_sqrt_2pi * density_next_mode)
@@ -309,11 +309,11 @@ for longest_seqs_mode1_copynum in [1, 2]:
                 break
             else:
                 next_adjacent_density = (1 + int((i+3) * mode < depths[-1])) * component_weights[i+1] * stats.norm.pdf((i+2) * mode, (i+1) * mode, (i+1) * sigma)
-                density_following_mode = max(0, get_density_for_idx(val_to_grid_idx((i + 2) * mode, grid_min, kde_grid_density), density) - next_adjacent_density)
+                density_following_mode = max(0, get_density_for_idx(val_to_grid_idx((i + 2) * mode, kde_grid_density, grid_min), density) - next_adjacent_density)
                 weight_following = (i + 2) * sigma_sqrt_2pi * density_following_mode
                 cpnum_dens = component_weights[i-1] * sigma_sqrt_2pi_reciprocal * stats.norm.pdf(next_eval_pt, (i - 1) * mode, (i - 1) * sigma) / (i - 1)
                 cpnum_dens += component_weights[i] * sigma_sqrt_2pi_reciprocal * stats.norm.pdf(next_eval_pt, i * mode, i * sigma) / i
-                next_obs_dens = get_density_for_idx(val_to_grid_idx(next_eval_pt, grid_min, kde_grid_density), density)
+                next_obs_dens = get_density_for_idx(val_to_grid_idx(next_eval_pt, kde_grid_density, grid_min), density)
                 if next_obs_dens - (2 * cpnum_dens) >= (5.0 / 12) * next_obs_dens:
                     component_weights.append(weight_following)
                     i += 2
@@ -348,7 +348,7 @@ for longest_seqs_mode1_copynum in [1, 2]:
         if j * mode < depths[-1]:
             curr_mode = j * mode
             tail_stats = stats.describe(depths[depths > curr_mode])
-            tail_mean_density = get_density_for_idx(val_to_grid_idx(tail_stats.mean, grid_min, kde_grid_density), density)
+            tail_mean_density = get_density_for_idx(val_to_grid_idx(tail_stats.mean, kde_grid_density, grid_min), density)
             est_components_left = max(0, (depths[-1] - (max_gaussian_copynums + 0.5) * mode) / mode)
             tail_fat_enough = (est_components_left >= 100) or ((est_components_left >= 4) and np.percentile(depths, 100 - est_components_left) > (max_gaussian_copynums + 0.5) * mode)
             if tail_fat_enough and (tail_mean_density >= 3 * component_weights[i] * stats.norm.pdf(tail_stats.mean, max_gaussian_copynums * mode, max_gaussian_copynums * sigma)):
@@ -428,19 +428,19 @@ for longest_seqs_mode1_copynum in [1, 2]:
         haploid_copynums_count = m.ceil((len(components) + 1)/ 2.0) # Misnomer: actually includes one extra for None or 0.5
         likeliest_copynums, likeliest_copynum_ubs = [], []
         copynum_lbs, copynum_ubs = [np.inf] * haploid_copynums_count, [np.inf] * haploid_copynums_count # 1st element is None or for haploid copy number 0.5 (diploid 1)
-        empirical_dens = get_density_for_idx(val_to_grid_idx(depths[0], grid_min, kde_grid_density), density)
+        empirical_dens = get_density_for_idx(val_to_grid_idx(depths[0], kde_grid_density, grid_min), density)
         maxdens_idx = compute_likeliest_copynum_at(depths[0], components, result.params, haploid_copynums_count, args.half, empirical_dens)
         x, step = depths[0], 0.02
         if maxdens_idx == 0:
             while maxdens_idx == 0:
                 x += step
-                empirical_dens = get_density_for_idx(val_to_grid_idx(x, grid_min, kde_grid_density), density)
+                empirical_dens = get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density)
                 maxdens_idx = compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count, args.half, empirical_dens)
             start = x + step
         else:
             while x >= grid_min:
                 x -= step
-                empirical_dens = get_density_for_idx(val_to_grid_idx(x, grid_min, kde_grid_density), density)
+                empirical_dens = get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density)
                 if compute_likeliest_copynum_at(x, components, result.params, haploid_copynums_count, args.half, empirical_dens) == 0:
                     x += step
                     break
