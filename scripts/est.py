@@ -420,6 +420,7 @@ def set_sigma_min(sigma_result, smallest_copynum, mode_error):
         return ((1 - mode_error) * sigma_min)
     return sigma_min
 
+# Compute copy# components with boundaries (enough to classify observations; may not be technically accurate [i.e. at population level])
 def get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, density, component_prefixes, smallest_copynum, use_gamma, include_half, params):
     likeliest_copynums, likeliest_copynum_ubs = [], []
     depth, step = grid_min + offset, 0.02
@@ -428,12 +429,14 @@ def get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, d
     if not('exp_' in component_prefixes):
         empirical_dens = get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)
     copynum = compute_likeliest_copynum_at(depth, component_prefixes, smallest_copynum, mode_copynum_ub, use_gamma, include_half, params, empirical_dens)
-    est_zero_fr_empirical_dens = (copynum == 0) and ('exp_' not in component_prefixes)
+    empirical_dens = (empirical_dens and (copynum == 0) and get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density))
     likeliest_copynums.append(copynum)
-    for depth in np.arange(depth + step, depths[0], step):
-        est_zero_fr_empirical_dens = eval_copynum_at(depth, est_zero_fr_empirical_dens, mode_copynum_ub, likeliest_copynums, likeliest_copynum_ubs)
-    for i in range(len(depths)):
-        est_zero_fr_empirical_dens = eval_copynum_at(depths[i], est_zero_fr_empirical_dens, mode_copynum_ub, likeliest_copynums, likeliest_copynum_ubs)
+    for depth in np.concatenate((np.arange(depth + step, depths[0], step), np.array(depths))):
+        copynum = compute_likeliest_copynum_at(depth, component_prefixes, smallest_copynum, mode_copynum_ub, use_gamma, include_half, params, empirical_dens)
+        empirical_dens = (empirical_dens and (copynum == 0) and get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density))
+        if copynum != likeliest_copynums[-1]:
+            likeliest_copynum_ubs.append(depth)
+            likeliest_copynums.append(copynum)
     return (likeliest_copynums, likeliest_copynum_ubs)
 
 def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, component_prefixes, smallest_copynum, include_half):
@@ -636,17 +639,6 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
             mode, mode_min, mode_max = set_mode(result.params[smallest_copynum_prefix + 'center'].value, mode_error, smallest_copynum)
         sigma_min = set_sigma_min(result.params[smallest_copynum_prefix + 'sigma'], smallest_copynum, mode_error)
         length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
-
-        # Compute copy# component boundaries (enough to classify observations; may not be technically accurate [i.e. at population level])
-        def eval_copynum_at(depth, est_zero_fr_empirical_dens, mode_copynum_ub, likeliest_copynums, likeliest_copynum_ubs):
-            empirical_dens = (est_zero_fr_empirical_dens and get_density_for_idx(val_to_grid_idx(depth, kde_grid_density, grid_min), density)) or None
-            copynum = compute_likeliest_copynum_at(depth, copynum_component_prefixes, smallest_copynum, mode_copynum_ub, use_gamma, args.half, result.params, empirical_dens)
-            if copynum != likeliest_copynums[-1]:
-                if copynum > 0:
-                    est_zero_fr_empirical_dens = False
-                likeliest_copynum_ubs.append(depth)
-                likeliest_copynums.append(copynum)
-            return est_zero_fr_empirical_dens
 
         likeliest_copynums, likeliest_copynum_ubs = get_likeliest_copynums_and_ubs(depths, grid_min, offset, kde_grid_density, density, copynum_component_prefixes,
                                                                                    smallest_copynum, use_gamma, args.half, result.params)
