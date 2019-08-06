@@ -117,8 +117,8 @@ $ <HOME>/scripts/utils/compute-stats-loop.sh
 5. Create plots
 $ cd ..
 $ mkdir plots
-$ cd plots
-$ mkdir observed
-$ python <HOME>/scripts/results/plotting/component-densities.py ../../full/<seq_aln_and_est> <plots_file_prefix> [../../summary/<est_len_gp_stats>]
-[$ mkdir population]
-[$ python <HOME>/scripts/results/plotting/component-densities.py --copynum_stats_file ../../summary/<copynum_stats_file> ../../full/<seq_aln_and_est> <plots_file_prefix> [../summary/../<est_len_gp_stats>]]
+$ mkdir plots/observed
+[$ mkdir stats_ideal]
+$ python <HOME>/scripts/results/plotting/component-densities_ideal-summary-stats.py full/<seq_aln_and_est> plots/observed <plots_file_prefix> [summary/<est_len_gp_stats>] [stats_ideal <stats_file_prefix>]
+[$ mkdir plots/population]
+[$ python <HOME>/scripts/results/plotting/component-densities_ideal-summary-stats.py --copynum_stats_file summary/<copynum_stats_file> full/<seq_aln_and_est> plots/observed <plots_file_prefix> [summary/<est_len_gp_stats>]]
