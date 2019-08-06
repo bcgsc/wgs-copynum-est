@@ -137,5 +137,5 @@ with open(args.stats_output_prefix + '_full.csv', 'w') as csvfile:
         writer.writerow([i, tpr, 1 - tpr, ppv, 1 - ppv, f1])
         correct_counts += aln_est_combos.loc[i, i]
     overall_sensitivity = correct_counts * 1.0 / aln_est_combos.sum().sum()
-    writer.writerow(['Non-binary overall', overall_sensitivity, 1 - overall_sensitivity, '', '', ''])
+    writer.writerow(['Overall', overall_sensitivity, 1 - overall_sensitivity, '', '', ''])
 
