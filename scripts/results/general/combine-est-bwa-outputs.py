@@ -76,13 +76,14 @@ seqs.loc[:, write_cols].to_csv('seq-est-and-aln.csv', header=header, index_label
 
 mins = [0, 100, 1000, 10000]
 maxs = [99, 999, 9999, np.inf]
-count_files = ['aln-est_counts_lt100.csv', 'aln-est_counts_lt1000.csv', 'aln-est_counts_lt10000.csv', 'aln-est_counts_gte10000.csv']
+count_files = ['aln-est_counts_gte0lte99.csv', 'aln-est_counts_gte100lte999.csv', 'aln-est_counts_gte1000lte9999.csv', 'aln-est_counts_gte10000ltinf.csv']
 if args.use_est_len_gps:
   mins = len_gp_stats['Min. len.']
   maxs = len_gp_stats['Max. len.']
   count_files = ['aln-est_counts_'] * len_gp_stats.shape[0]
   for i in range(len_gp_stats.shape[0]):
-    count_files[i] = count_files[i] + str(i) + '.csv'
+    ub_str = 'lt' + (maxs.iloc[i] < np.inf) * 'e' + str(maxs.iloc[i])
+    count_files[i] = count_files[i] + 'gte' + str(mins.iloc[i]) + ub_str + '.csv'
 
 for cat in range(len(mins)):
   count_and_write(max_components_est, seqs, cat)
