@@ -260,13 +260,16 @@ for i in range(len(ubs)):
     ub = int(ub)
   seqs = all_seqs.loc[(all_seqs.length >= lb) & (all_seqs.length <= ub),]
   if seqs.shape[0] > 0:
+    label_ub, filename_ub = str(ub) + ']', 'lte' + str(ub)
+    if ub == np.inf:
+      label_ub, filename_ub = str(ub) + ')', 'lt' + str(ub)
     if args.use_oom_len_gps:
       curr_components = all_components.loc[(all_components.group_min_len >= lb) & (all_components.group_max_len <= ub),]
     else:
       curr_components = all_components.loc[(all_components.group_min_len == lb) & (all_components.group_max_len == ub),]
     if args.plot_est_population_densities:
-      compute_and_plot_population_densities(curr_components, seqs, 'with length in [' + str(lb) + ', ' + str(ub) + ')',
-          os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + 'lte' + str(ub)))
+      compute_and_plot_population_densities(curr_components, seqs, 'with length in [' + str(lb) + ', ' + label_ub,
+          os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
     else:
       est_max_cpnum = get_max_copynum(seqs.likeliest_copynum)
       cpnums = get_copynums_list(est_max_cpnum)
@@ -276,8 +279,8 @@ for i in range(len(ubs)):
       kde_grid = get_density_grid(seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum, 100, curr_components) # can replace 100 by some other density
       est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
       aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
-      plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, est_counts, aln_counts, depths, 'with length in [' + str(lb) + ', ' + str(ub) + ')',
-          os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + 'lte' + str(ub)))
+      plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, est_counts, aln_counts, depths, 'with length in [' + str(lb) + ', ' + label_ub,
+          os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
       if args.ideal_summary_folder:
         cpnum_lbs = get_aln_copynum_bounds(aln_kdes_normed, kde_grid)
         assigned_cpnums = cpnum_lbs[cpnum_lbs < np.inf].index
@@ -286,7 +289,7 @@ for i in range(len(ubs)):
           len_gp_cpnum_lbs.loc[i, j] = cpnum_lbs[j]
           len_gp_cpnum_alns.loc[i, j], len_gp_cpnum_tps.loc[i, j], len_gp_cpnum_positives.loc[i, j] = aln_counts[j], tps[j], positives[j]
         write_stats(compute_ideal_stats(len_gp_cpnum_tps.loc[i, cpnums], len_gp_cpnum_alns.loc[i, cpnums], len_gp_cpnum_positives.loc[i, cpnums]),
-            os.path.join(ideal_summary_stats_folder, 'stats_len-gte' + str(lb) + 'lte' + str(ub)), tps.sum() / seqs.shape[0])
+            os.path.join(ideal_summary_stats_folder, 'stats_len-gte' + str(lb) + filename_ub), tps.sum() / seqs.shape[0])
 
 if not(args.plot_est_population_densities) and args.ideal_summary_folder:
   len_gp_cpnum_alns.loc[len(ubs), cpnums_all] = len_gp_cpnum_alns.loc[:(len(ubs)-1), cpnums_all].sum()
