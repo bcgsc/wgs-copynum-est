@@ -119,6 +119,6 @@ $ cd ..
 $ mkdir plots
 $ mkdir plots/observed
 [$ mkdir ideal]
-$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py full/<seq_aln_and_est> plots/observed <plots_file_prefix> [summary/<est_len_gp_stats>] [ideal]
+$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py --use_oom_len_gps full/<seq_aln_and_est> summary/<est_len_gp_stats> summary/<copynum_stats_file> plots/observed <plots_file_prefix> [ideal]
 [$ mkdir plots/population]
-[$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py --copynum_stats_file summary/<copynum_stats_file> full/<seq_aln_and_est> plots/observed <plots_file_prefix> [summary/<est_len_gp_stats>]]
+[$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py --plot_est_population_densities full/<seq_aln_and_est> summary/<est_len_gp_stats> summary/<copynum_stats_file> plots/population <plots_file_prefix>]
