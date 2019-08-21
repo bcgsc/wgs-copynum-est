@@ -103,7 +103,7 @@ if HALF:
 
     with open(args.stats_output_prefix + '_half1many.csv', 'w') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Class \ Stat', 'TPR', 'FNR', 'PPV', 'FDR', 'F1'])
+        writer.writerow(['Copy #', 'TPR', 'FNR', 'PPV', 'FDR', 'F1'])
         do_half_stats('Half', half_to_half, alnmt_counts_half1many[HALF_IDX], est_counts_1many[HALF_IDX])
         do_half_stats('One', one_to_one, alnmt_counts_half1many[ONE_IDX], est_counts_1many[ONE_IDX])
         do_half_stats('Many', many_to_many, alnmt_counts_half1many[MANY_IDX], est_counts_1many[MANY_IDX])
@@ -119,7 +119,7 @@ for i in est_counts_full.index:
 
 with open(args.stats_output_prefix + '_full.csv', 'w') as csvfile:
     writer = csv.writer(csvfile)
-    writer.writerow(['Class \ Stat', 'TPR', 'FNR', 'PPV', 'FDR', 'F1'])
+    writer.writerow(['Copy #', 'TPR', 'FNR', 'PPV', 'FDR', 'F1'])
     rows = list(map(lambda i: [str(int(i)) if i != 0.5 else str(i)], aln_est_combos.index.tolist()))
     correct_counts = 0
     for i in aln_est_combos.index:
