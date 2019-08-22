@@ -114,7 +114,7 @@ Note that the following requires the environment variable WGS_COPYNUM_EST_HOME t
 The script is not in the repo; I added then decided to remove it for now due to it always being apparently edited even when I hadn't done anything, or some issue like that.
 $ <HOME>/scripts/utils/compute-stats-loop.sh
 
-5. Create plots
+5. Create plots; compute ideal (best-possible) classifier performance summary statistics.
 $ cd ..
 $ mkdir plots
 $ mkdir plots/observed
@@ -122,3 +122,6 @@ $ mkdir plots/observed
 $ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py --use_oom_len_gps full/<seq_aln_and_est> summary/<est_len_gp_stats> summary/<copynum_stats_file> plots/observed <plots_file_prefix> [ideal]
 [$ mkdir plots/population]
 [$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py --plot_est_population_densities full/<seq_aln_and_est> summary/<est_len_gp_stats> summary/<copynum_stats_file> plots/population <plots_file_prefix>]
+
+6. Compute classifier-to-ideal performance summary statistics ratios
+$ <HOME>/utils/compare_est-ideal-stats_loop.sh
