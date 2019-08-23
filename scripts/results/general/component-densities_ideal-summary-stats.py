@@ -134,16 +134,14 @@ def get_density_grid(seqs, depths, grid_min, est_max, grid_dens, components):
   depths_98th_pctile, est_max_rel_ub = np.quantile(depths, 0.98), 1.75 * est_max * mode
   if depths[-1] < est_max_rel_ub:
     grid_max = depths[-1] + MAX_OFFSET
+    if depths[-1] - depths_98th_pctile > 0.5 * mode:
+      grid_max = depths_98th_pctile + MAX_OFFSET
   elif (depths_98th_pctile >= (est_max + 1) * mode) and (depths_98th_pctile <= est_max_rel_ub):
     grid_max = depths_98th_pctile + MAX_OFFSET
   elif seqs.loc[seqs.likeliest_copynum == est_max,].mean_kmer_depth.mean() > est_max_rel_ub:
     grid_max = est_max_rel_ub + MAX_OFFSET
   else:
     grid_max = (est_max + 1) * mode + MAX_OFFSET
-  #if depths[-1] < (est_max + 4) * mode:
-  #  grid_max = depths[-1] + MAX_OFFSET
-  #else:
-  #  grid_max = min(seqs.loc[seqs.likeliest_copynum == est_max,].mean_kmer_depth.mean(), (est_max + 4) * mode) + MAX_OFFSET
   return np.linspace(grid_min, grid_max, grid_dens * (grid_max - grid_min) + 1)
 
 def get_normalised_kdes(seqs_attr, kde_grid, counts, total_count):
