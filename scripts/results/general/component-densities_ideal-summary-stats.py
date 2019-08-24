@@ -156,7 +156,7 @@ def finalise_figure(ax, fig, title, filename_prefix):
   ax.set_title(title)
   fig.savefig(filename_prefix + '.png')
 
-def plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, est_counts, aln_counts, depths, title_suffix, filename_prefix):
+def plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, depths, title_suffix, filename_prefix):
   fig, ax = plt.subplots(figsize = (15, 10))
   for c in cpnums:
     idx = int(c + 1)
@@ -166,6 +166,19 @@ def plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, est_counts, al
       ax.plot(kde_grid, est_kdes_normed[c], color = COLOURS[idx], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(c))
     if aln_kdes_normed[c] is not None:
       ax.plot(kde_grid, aln_kdes_normed[c], color = COLOURS[idx], lw = 1, label = 'True copy # ' + str(c))
+  ax.plot(kde_grid, get_whole_sample_kde(depths).evaluate(kde_grid), 'k', lw = 1, label = "All sequences")
+  finalise_figure(ax, fig, 'Densities for estimated and true copy numbers, sequences ' + title_suffix, filename_prefix)
+
+def plot_aln_kdes_with_est_bds(kde_grid, cpnums, aln_kdes_normed, est_cpnum_data, depths, title_suffix, filename_prefix):
+  fig, ax = plt.subplots(figsize = (15, 10))
+  for i in range(len(cpnums)):
+    c, idx = cpnums[i], int(cpnums[i] + 1)
+    if c < 1:
+      idx = m.ceil(c)
+    if aln_kdes_normed[c] is not None:
+      ax.plot(kde_grid, aln_kdes_normed[c], color = COLOURS[idx], lw = 1, label = 'True copy # ' + str(c))
+    if i > 0:
+      plt.axvline(x = est_cpnum_data[est_cpnum_data.copynum == c].depth_min.iloc[0], color = COLOURS[idx], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(c) + ' lower bound')
   ax.plot(kde_grid, get_whole_sample_kde(depths).evaluate(kde_grid), 'k', lw = 1, label = "All sequences")
   finalise_figure(ax, fig, 'Densities for estimated and true copy numbers, sequences ' + title_suffix, filename_prefix)
 
@@ -239,7 +252,7 @@ if not(args.plot_est_population_densities):
   kde_grid = get_density_grid(all_seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum_all, 100, all_components) # can replace 100 by some other density
   est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
   aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
-  plot_kdes(kde_grid, cpnums_all, est_kdes_normed, aln_kdes_normed, est_counts, aln_counts, depths, 'of all lengths', os.path.join(args.plots_folder, args.plots_file_prefix))
+  plot_kdes(kde_grid, cpnums_all, est_kdes_normed, aln_kdes_normed, depths, 'of all lengths', os.path.join(args.plots_folder, args.plots_file_prefix))
   if args.ideal_summary_folder:
     ideal_summary_stats_folder, ideal_counts_folder = os.path.join(args.ideal_summary_folder, 'stats'), os.path.join(args.ideal_summary_folder, 'counts')
     if not(os.path.exists(ideal_summary_stats_folder)):
@@ -275,10 +288,14 @@ for i in range(len(ubs)):
       est_counts, aln_counts = get_counts(seqs_est), get_counts(seqs_aln)
       depths = get_sorted_depth_vals(seqs.mean_kmer_depth.values)
       kde_grid = get_density_grid(seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum, 100, curr_components) # can replace 100 by some other density
-      est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
       aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
-      plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, est_counts, aln_counts, depths, 'with length in [' + str(lb) + ', ' + label_ub,
-          os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
+      if args.use_oom_len_gps:
+        est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
+        plot_kdes(kde_grid, cpnums, est_kdes_normed, aln_kdes_normed, depths, 'with length in [' + str(lb) + ', ' + label_ub,
+            os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
+      else:
+        plot_aln_kdes_with_est_bds(kde_grid, cpnums, aln_kdes_normed, curr_components, depths, 'with length in [' + str(lb) + ', ' + label_ub,
+            os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
       if args.ideal_summary_folder:
         cpnum_lbs = get_aln_copynum_bounds(aln_kdes_normed, kde_grid)
         assigned_cpnums = cpnum_lbs[cpnum_lbs < np.inf].index
