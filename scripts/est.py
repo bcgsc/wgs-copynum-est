@@ -471,7 +471,7 @@ def add_to_copynum_stats(data, cols, stats_hash):
     for i in range(len(data)):
         stats_hash[cols[i]].append(data[i])
 
-def create_copynum_stats(smallest_copynum, max_copynum_est, use_gamma, include_half, params, component_prefixes, copynum_stats_hash):
+def create_copynum_stats(smallest_copynum, copynums, include_half, params, component_prefixes, copynum_stats_hash):
     if 'exp_' in component_prefixes:
         add_to_copynum_stats(get_copynum_stats_data(0, params['exp_wt_c'].value, params['exp_decay'].value, params['exp_decay'].value),
             COPYNUM_STATS_COLS, copynum_stats_hash)
@@ -493,14 +493,10 @@ def create_copynum_stats(smallest_copynum, max_copynum_est, use_gamma, include_h
         mean1 = (wt_normed * mean) + (wt_i_normed * mean_i)
         sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
         add_to_copynum_stats(get_copynum_stats_data(1, wt1, mean1, sigma1), COPYNUM_STATS_COLS, copynum_stats_hash)
-    i = 1
-    for i in range(2, int(max_copynum_est) - int(use_gamma) + 1):
-        prefix = (i > mode_copynum_ub) * 'c' + 'gauss' + str(i) + '_'
-        wt, mean, sigma = get_component_params((i > mode_copynum_ub) * 'c' + 'gauss' + str(i) + '_', params)[:3]
-        add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma), COPYNUM_STATS_COLS, copynum_stats_hash)
-    if use_gamma:
-        wt, mean, sigma, loc, shape, scale = get_component_params('gamma_', params)
-        add_to_copynum_stats(get_copynum_stats_data(i + 1, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
+    for i in range(2, int(copynums[-1]) + 1):
+        prefix = get_component_prefix(i, copynum_component_prefixes)
+        wt, mean, sigma, loc, shape, scale = get_component_params(prefix, params)
+        add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
 
 def write_to_log(log_file, len_gp_idx, minlen, maxlen, maxdepth, depth_max_pctl, depth_max_pctl_rank, fit_report):
     log_file.write(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H:%M:%S : Sequence group ') + str(len_gp_idx) + ' estimated\n')
@@ -663,7 +659,7 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         def get_copynum_stats_data(idx, wt, mean, sigma, loc = None, shape = None, scale = None): # copy number idx
             return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[idx], copynum_ubs[idx], wt, mean, sigma, loc, shape, scale]
 
-        create_copynum_stats(smallest_copynum, max_copynum_est, use_gamma, args.half, result.params, copynum_component_prefixes, copynum_stats_hash)
+        create_copynum_stats(smallest_copynum, copynums, args.half, result.params, copynum_component_prefixes, copynum_stats_hash)
 
         write_to_log(log_file, len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, curr_len_gp_stats.max_depth,
                      depth_max_pctl, depth_max_pctl_rank, result.fit_report())
