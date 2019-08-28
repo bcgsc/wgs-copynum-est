@@ -77,11 +77,11 @@ def get_aln_copynum_bounds(kdes_normed, kde_grid):
       cpnum_assnmts[:-1] = cpnum_assnmts_tmp
       cpnum_assnmts.iloc[-1] = maxdens_change_cpnums[cpnum_assnmt_idxs[np.argwhere(maxdens_change_cpnums[cpnum_assnmt_idxs] == cpnum_assnmts_tmp[-1])[0][0]] + 1]
     elif maxdens_change_cpnums.iloc[-1] > 0:
-      cpnum_assnmt_idxs, cpnum_assnmts = [maxdens_cpnums_change_idxs.size], pd.Series([maxdens_change_cpnums.iloc[-1]])
+      cpnum_assnmts = pd.Series([maxdens_change_cpnums.iloc[-1]])
     else:
-      cpnum_assnmt_idxs, cpnum_assnmts = [maxdens_cpnums_change_idxs.size - 1], pd.Series([maxdens_change_cpnums.iloc[-2]])
+      cpnum_assnmts = pd.Series([maxdens_change_cpnums.iloc[-2]])
   else:
-    cpnum_assnmt_idxs, cpnum_assnmts = [0], pd.Series([maxdens_change_cpnums[0]])
+    cpnum_assnmts = pd.Series([maxdens_change_cpnums[0]])
   lbs = pd.Series([np.inf] * len(kdes_normed), index = kdes_normed.keys())
   lbs[cpnum_assnmts[0]] = 0
   for i in range(1, cpnum_assnmts.size):
