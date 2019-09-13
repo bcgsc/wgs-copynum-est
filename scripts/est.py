@@ -163,7 +163,9 @@ def get_component_prefix(copynum, prefixes):
         return prefix
     elif ('c' + prefix) in prefixes:
         return ('c' + prefix)
-    return 'gamma_'
+    elif 'gamma_' in prefixes:
+        return 'gamma_'
+    return None
 
 def get_component_weights(density_at_modes, min_density_depth_idx1, use_gamma = False, cdf_at_modes = None, next_mode_cdf = None):
     if use_gamma:
@@ -410,50 +412,52 @@ def set_sigma_min(sigma_result, smallest_copynum, mode_error):
         return ((1 - mode_error) * sigma_min)
     return sigma_min
 
-def compute_likeliest_copynums(component_prefixes, copynum_densities):
-    maxdensity_copynums = copynum_densities.idxmax()
+def compute_likeliest_copynum_indices(maxdensity_copynums):
     maxdens_cpnums_change_idxs = np.where(np.diff(maxdensity_copynums))[0]
     if maxdens_cpnums_change_idxs.size == 0:
         maxdens_cpnums_change_idxs = np.array([-1])
     maxdens_cpnums_change_idxs += 1
+    return maxdens_cpnums_change_idxs
+
+def compute_likeliest_copynums(maxdensity_copynums, maxdens_cpnums_change_idxs):
     maxdens_change_cpnums = pd.Series([0.0] * (maxdens_cpnums_change_idxs.size + 1))
     maxdens_change_cpnums[0] = maxdensity_copynums.iloc[0]
     if maxdens_change_cpnums.size > 1:
         maxdens_change_cpnums[1:] = maxdensity_copynums.iloc[maxdens_cpnums_change_idxs]
-        # Want indices where copy number is followed by a larger copy number, plus the last cp # preceded by a smaller one
-        cpnum_assnmt_idxs = np.where(np.diff(maxdens_change_cpnums) > 0)[0]
-        if cpnum_assnmt_idxs.size > 0:
-            cpnum_assnmts_tmp = pd.Series([np.nan] * cpnum_assnmt_idxs.size)
-            cpnum_assnmts_tmp = maxdens_change_cpnums[cpnum_assnmt_idxs]
-            # To eliminate all assignments preceded by any larger one(s), and consolidate duplicates
-            cpnum_assnmts_tmp = cpnum_assnmts_tmp[cpnum_assnmts_tmp >= cpnum_assnmts_tmp.cummax()].unique()
-            cpnum_assnmts = pd.Series([np.nan] * (cpnum_assnmts_tmp.size + 1))
-            cpnum_assnmts[:-1] = cpnum_assnmts_tmp
-            cpnum_assnmts.iloc[-1] = maxdens_change_cpnums[cpnum_assnmt_idxs[np.argwhere(maxdens_change_cpnums[cpnum_assnmt_idxs] == cpnum_assnmts_tmp[-1])[0][0]] + 1]
-        elif maxdens_change_cpnums.iloc[-1] > 0:
-            cpnum_assnmts = pd.Series([maxdens_change_cpnums.iloc[-1]])
-        else:
-            cpnum_assnmts = pd.Series([maxdens_change_cpnums.iloc[-2]])
-    else:
-        cpnum_assnmts = pd.Series([maxdens_change_cpnums[0]])
-    return cpnum_assnmts
+    return maxdens_change_cpnums
 
-def get_copynum_lower_bounds(copynums, cpnum_assnmts, copynum_densities):
-    lbs = pd.Series([np.inf] * len(copynums), index = copynums)
-    lbs[cpnum_assnmts[0]] = 0
-    for i in range(1, cpnum_assnmts.size):
-        intersection_idxs = np.argwhere(np.diff(np.sign(copynum_densities.loc[cpnum_assnmts[i]] - copynum_densities.loc[cpnum_assnmts[i-1]])) > 0)
-        location_condition = (intersection_idxs > np.argmax(copynum_densities.loc[cpnum_assnmts[i-1]])) & (intersection_idxs < np.argmax(copynum_densities.loc[cpnum_assnmts[i]]))
-        intersections = intersection_idxs[location_condition] # between peaks
-        if intersections.size == 0:
-            location_condition = (intersection_idxs < np.argmax(copynum_densities.loc[cpnum_assnmts[i-1]])) & (intersection_idxs < np.argmax(copynum_densities.loc[cpnum_assnmts[i]]))
-            intersections = intersection_idxs[location_condition] # before peaks
-            if intersections.size == 0:
-                location_condition = (intersection_idxs > np.argmax(copynum_densities.loc[cpnum_assnmts[i-1]])) & (intersection_idxs > np.argmax(copynum_densities.loc[cpnum_assnmts[i]]))
-                intersections = intersection_idxs[location_condition] # after peaks
-        if intersections.size:
-            lbs[cpnum_assnmts[i]] = copynum_densities.columns[intersections[0]]
-    return lbs
+def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums):
+    copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
+    # Note: 0 does not have an entry in copynum_lbs and copynum_ubs.
+    copynum_lbs = pd.Series(np.inf, index=copynums)
+    copynum_ubs = pd.Series(np.inf, index=copynums)
+    copynum_lbs[copynum_assnmts[0]] = 0
+    # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
+    # (whereas 1, 4, 3, 2 could [copy#4 variance is larger than that of 3])
+    # 2a. Out-of-order copy#s are always followed eventually by in-order copy#s, e.g.: 1, 3, 2 will be followed eventually by a copy# >= 3
+    # b. With one possible exception at the end (accounted for by the last "if" clause)
+    reserve_copynum, reserve_bd = 0, np.inf
+    for i in range(1, len(likeliest_copynums)):
+        if likeliest_copynums[i] not in copynums_unique:
+            if likeliest_copynums[i] < copynum_assnmts[-1]:
+                reserve_copynum, reserve_bd = copynum_assnmts[-1], copynum_lbs[copynum_assnmts[-1]]
+                copynum_lbs[copynum_assnmts[-1]] = np.inf
+                copynums_unique.remove(copynum_assnmts[-1])
+                copynum_assnmts.pop()
+            if len(copynum_assnmts) == 0:
+                copynum_lbs[likeliest_copynums[i]] = 0
+            else:
+                copynum_lbs[likeliest_copynums[i]] = likeliest_copynum_ubs[i-1]
+                copynum_ubs[copynum_assnmts[-1]] = likeliest_copynum_ubs[i-1]
+            copynum_assnmts.append(likeliest_copynums[i])
+            copynums_unique.add(likeliest_copynums[i])
+    if copynum_assnmts[-1] < reserve_copynum:
+        copynum_lbs[copynum_assnmts[-1]] = np.inf
+        copynum_assnmts.pop()
+        copynum_lbs[reserve_copynum] = reserve_bd
+        copynum_ubs[copynum_assnmts[-1]] = reserve_bd
+        copynum_assnmts.append(reserve_copynum)
+    return (copynum_assnmts, copynum_lbs, copynum_ubs)
 
 def assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs):
     seqs.loc[gp_len_condition, 'modex'] = seqs.loc[gp_len_condition].mean_kmer_depth / mode
@@ -628,12 +632,11 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
         sigma_min = set_sigma_min(result.params[smallest_copynum_prefix + 'sigma'], smallest_copynum, mode_error)
         length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
 
-        copynums = [0] + ([0.5] * args.half)
+        copynums = [0.0] + ([0.5] * args.half)
         if max_copynum_est > 0.5:
             copynums = copynums + list(range(1, max_copynum_est + 1))
-        depths_grid_max = grid_max - offset * 0.5
-        depths_grid = np.linspace(grid_min, depths_grid_max, val_to_grid_idx(depths_grid_max, 10, grid_min) + 1)
-        copynum_densities = pd.DataFrame(0, index = copynums, columns = depths_grid)
+        depths_grid = np.unique(np.concatenate((np.arange(grid_min + offset, depths[0], 0.02), np.array(depths))))
+        copynum_densities = pd.DataFrame(0.0, index = copynums, columns = depths_grid)
         for cpnum in copynums:
             if (cpnum == 0) or (cpnum >= smallest_copynum):
                 copynum_densities.loc[cpnum] = depths_grid
@@ -642,13 +645,21 @@ for longest_seqs_mode1_copynum in [0.5, 1.0]:
                 else:
                     prefix = get_component_prefix(cpnum, copynum_component_prefixes)
                     copynum_densities.loc[cpnum] = copynum_densities.loc[cpnum].apply(lambda x: compute_density_at(x, prefix, result.params))
+
         if 'exp_' not in copynum_component_prefixes:
+            density0_test = copynum_densities.loc[0].copy()
+            nonzero_densities_sum = copynum_densities.loc[1:].apply(sum)
             copynum_densities.loc[0] = copynum_densities.loc[0] - copynum_densities.iloc[1:].sum()
 
-        copynum_assnmts = compute_likeliest_copynums(copynum_component_prefixes, copynum_densities)
-        copynum_lbs = get_copynum_lower_bounds(copynums, copynum_assnmts, copynum_densities)
-        copynum_ubs = pd.Series([np.inf] * len(copynums), index = copynums)
-        copynum_ubs[copynum_assnmts[:-1]] = copynum_lbs[copynum_assnmts[1:]]
+        maxdensity_copynums = copynum_densities.idxmax()
+        if ('exp_' not in copynum_component_prefixes) and (maxdensity_copynums.iloc[0] == 0):
+            nonzero_max_1 = np.where(np.diff(maxdensity_copynums))[0][0] + 1
+            copynum_densities.loc[0].iloc[nonzero_max_1:] = 0.0
+        maxdensity_copynums = copynum_densities.idxmax()
+        likeliest_copynum_ub_idxs = compute_likeliest_copynum_indices(maxdensity_copynums)
+        likeliest_copynums = compute_likeliest_copynums(maxdensity_copynums, likeliest_copynum_ub_idxs)
+        likeliest_copynum_ubs = copynum_densities.columns[likeliest_copynum_ub_idxs]
+        copynum_assnmts, copynum_lbs, copynum_ubs = assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums)
 
         ## Initial assignments might be slightly out of order: have to infer orderly final assignments
         # Assign to sequences in the corresponding ranges
