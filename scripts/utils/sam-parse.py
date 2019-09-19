@@ -20,12 +20,12 @@ def init_seq_dict(row):
     return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'Other CIGARs': '', 'MAPQ (unique match only)': 0, 'GC content': compute_gc_content(row[SEQ_COL]) }
 
 def update_match_info(row, seq_dict, other_cigars):
-    if is_match_lax(row[CIGAR_COL]):
-        seq_dict['Matches'] += 1
-        seq_dict['MAPQ (unique match only)'] += int(row[MAPQ_COL])
-    else:
+    if is_alnmt_hard_clipped(row[CIGAR_COL]):
         seq_dict['Others'] += 1
         other_cigars.append(row[CIGAR_COL])
+    else:
+        seq_dict['Matches'] += 1
+        seq_dict['MAPQ (unique match only)'] += int(row[MAPQ_COL])
 
 def is_mapped(flags):
     if flags >= 512:
@@ -44,10 +44,10 @@ def is_match(cigar):
         return True
     return False
 
-def is_match_lax(cigar):
+def is_alnmt_hard_clipped(cigar):
     if re.search('H', cigar):
-        return False
-    return True
+        return True
+    return False
 
 def finalise(seq_dict, other_cigars):
     seq_dict['Other CIGARs'] = ','.join(other_cigars)
