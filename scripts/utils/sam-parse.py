@@ -17,14 +17,14 @@ def compute_gc_content(seq):
     return (gc_count / len(seq))
 
 def init_seq_dict(row):
-    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'MAPQ (unique match only)': 0, 'GC content': compute_gc_content(row[SEQ_COL]) }
+    return {'ID': int(row[ID_COL]), 'Mapped': is_mapped(int(row[FLAGS_COL])), 'Matches': 0, 'Others': 0, 'MAPQ sum': 0, 'GC content': compute_gc_content(row[SEQ_COL]) }
 
 def update_match_info(row, seq_dict):
     if is_alnmt_hard_clipped(row[CIGAR_COL]):
         seq_dict['Others'] += 1
     else:
         seq_dict['Matches'] += 1
-        seq_dict['MAPQ (unique match only)'] += int(row[MAPQ_COL])
+        seq_dict['MAPQ sum'] += int(row[MAPQ_COL])
 
 def is_mapped(flags):
     if flags >= 512:
@@ -61,7 +61,7 @@ with open(args.samfilename, newline='') as samfile:
     reader = csv.reader(samfile, delimiter='\t')
     error_seqs = []
     with open(args.outfilename, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'MAPQ (unique match only)', 'GC content'])
+        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=['ID', 'Mapped', 'Matches', 'Others', 'MAPQ sum', 'GC content'])
         writer.writeheader()
         row = next(reader)
         seq_dict = init_seq_dict(row)
