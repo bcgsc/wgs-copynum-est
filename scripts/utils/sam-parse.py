@@ -38,11 +38,6 @@ def is_mapped(flags):
         mod /= 2
     return True
 
-def is_match(cigar):
-    if re.search('^[0-9]+M$', cigar):
-        return True
-    return False
-
 def is_alnmt_clipped(cigar):
     hsplit = cigar.split('H')
     if len(hsplit) == 1:
