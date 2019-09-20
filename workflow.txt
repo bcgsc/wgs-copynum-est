@@ -79,9 +79,9 @@ $ vim <ref_aln_sam_cp>
 
 Parse SAM; write to <ref_aln_counts_csv>
 a. For a real sequencing dataset:
-$ python <HOME>/scripts/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv> <error_log>
+$ python <HOME>/scripts/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv>
 b. For a simulated dataset:
-$ python <HOME>/scripts/utils/sam-parse.py aln/<perfect_matches_sam> aln/<ref_aln_counts_csv> aln/<error_log>
+$ python <HOME>/scripts/utils/sam-parse.py aln/<perfect_matches_sam> aln/<ref_aln_counts_csv>
 
 Remove error and missing logs if empty, e.g.:
 $ rm aln/w5d50/<error_log>
