@@ -8,12 +8,14 @@ FLAGS_COL = 1
 MAPQ_COL = 4
 CIGAR_COL = 5
 SEQ_COL = 9
+NM_COL = 11
 
 ID_COLNAME = 'ID'
 MATCHES_COLNAME = 'Matches'
 CLIPPED_COLNAME ='Clipped'
 MAPQ_SUM_COLNAME = 'MAPQ sum'
 GC_CONTENT_COLNAME = 'GC content'
+EDIT_DIST_COLNAME = 'Edit distance'
 
 def compute_gc_content(seq):
     gc_count = 0
@@ -22,8 +24,11 @@ def compute_gc_content(seq):
             gc_count += 1
     return (gc_count / len(seq))
 
+def get_edit_distance(nm_col):
+    return int(nm_col.split(':')[-1])
+
 def init_seq_dict(row):
-    return { ID_COLNAME: int(row[ID_COL]), MATCHES_COLNAME: 0, CLIPPED_COLNAME: 0, MAPQ_SUM_COLNAME: 0, GC_CONTENT_COLNAME: compute_gc_content(row[SEQ_COL]) }
+    return { ID_COLNAME: int(row[ID_COL]), MATCHES_COLNAME: 0, CLIPPED_COLNAME: 0, MAPQ_SUM_COLNAME: 0, GC_CONTENT_COLNAME: compute_gc_content(row[SEQ_COL]), EDIT_DIST_COLNAME: {}  }
 
 def update_match_info(row, seq_dict):
     if is_alnmt_clipped(row[CIGAR_COL]):
@@ -31,6 +36,10 @@ def update_match_info(row, seq_dict):
     else:
         seq_dict[MATCHES_COLNAME] += 1
         seq_dict[MAPQ_SUM_COLNAME] += int(row[MAPQ_COL])
+        edit_distance = get_edit_distance(row[NM_COL])
+        if edit_distance not in seq_dict[EDIT_DIST_COLNAME]:
+            seq_dict[EDIT_DIST_COLNAME][edit_distance] = 0
+        seq_dict[EDIT_DIST_COLNAME][edit_distance] += 1
 
 def is_mapped(flags):
     if flags >= 512:
@@ -61,7 +70,7 @@ csv.field_size_limit(sys.maxsize)
 with open(args.samfilename, newline='') as samfile:
     reader = csv.reader(samfile, delimiter='\t')
     with open(args.outfilename, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=[ID_COLNAME, MATCHES_COLNAME, CLIPPED_COLNAME, MAPQ_SUM_COLNAME, GC_CONTENT_COLNAME])
+        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=[ID_COLNAME, MATCHES_COLNAME, CLIPPED_COLNAME, MAPQ_SUM_COLNAME, GC_CONTENT_COLNAME, EDIT_DIST_COLNAME])
         writer.writeheader()
         row = next(reader)
         seq_dict = init_seq_dict(row)
@@ -73,9 +82,11 @@ with open(args.samfilename, newline='') as samfile:
                 if is_mapped(int(row[FLAGS_COL])):
                     update_match_info(row, seq_dict)
             else:
+                seq_dict[EDIT_DIST_COLNAME] = str(seq_dict[EDIT_DIST_COLNAME])[1:-1].replace(' ', '')
                 writer.writerow(seq_dict)
                 seq_dict = init_seq_dict(row)
                 if is_mapped(int(row[FLAGS_COL])):
                     update_match_info(row, seq_dict)
+        seq_dict[EDIT_DIST_COLNAME] = str(seq_dict[EDIT_DIST_COLNAME])[1:-1].replace(' ', '')
         writer.writerow(seq_dict)
 
