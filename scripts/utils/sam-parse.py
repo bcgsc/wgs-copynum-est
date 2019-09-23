@@ -11,6 +11,7 @@ SEQ_COL = 9
 NM_COL = 11
 
 ID_COLNAME = 'ID'
+LENGTH_COLNAME = 'Length'
 MATCHES_COLNAME = 'Matches'
 CLIPPED_COLNAME ='Clipped'
 MAPQ_SUM_COLNAME = 'MAPQ sum'
@@ -28,7 +29,8 @@ def get_edit_distance(nm_col):
     return int(nm_col.split(':')[-1])
 
 def init_seq_dict(row):
-    return { ID_COLNAME: int(row[ID_COL]), MATCHES_COLNAME: 0, CLIPPED_COLNAME: 0, MAPQ_SUM_COLNAME: 0, GC_CONTENT_COLNAME: compute_gc_content(row[SEQ_COL]), EDIT_DIST_COLNAME: {}  }
+    return { ID_COLNAME: int(row[ID_COL]), LENGTH_COLNAME: len(row[SEQ_COL]), MATCHES_COLNAME: 0, CLIPPED_COLNAME: 0,
+        MAPQ_SUM_COLNAME: 0, GC_CONTENT_COLNAME: compute_gc_content(row[SEQ_COL]), EDIT_DIST_COLNAME: {} }
 
 def update_match_info(row, seq_dict):
     if is_alnmt_clipped(row[CIGAR_COL]):
@@ -70,7 +72,7 @@ csv.field_size_limit(sys.maxsize)
 with open(args.samfilename, newline='') as samfile:
     reader = csv.reader(samfile, delimiter='\t')
     with open(args.outfilename, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=[ID_COLNAME, MATCHES_COLNAME, CLIPPED_COLNAME, MAPQ_SUM_COLNAME, GC_CONTENT_COLNAME, EDIT_DIST_COLNAME])
+        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=[ID_COLNAME, LENGTH_COLNAME, MATCHES_COLNAME, CLIPPED_COLNAME, MAPQ_SUM_COLNAME, GC_CONTENT_COLNAME, EDIT_DIST_COLNAME])
         writer.writeheader()
         row = next(reader)
         seq_dict = init_seq_dict(row)
