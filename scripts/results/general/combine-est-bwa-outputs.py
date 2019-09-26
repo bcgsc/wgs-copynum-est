@@ -60,8 +60,8 @@ if max_components_est > 0.5:
 seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[m.floor(gp)])
 
 seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
-seq_alns.drop('GC content', axis=1, inplace=True)
-cols_from_to = { 'Mapped': 'aln_mapped', 'Matches': 'aln_match_count', 'Others': 'aln_other_count', 'Other CIGARs': 'aln_other_cigars', 'MAPQ (unique match only)': 'aln_mapq' }
+seq_alns.drop(['Length', 'GC content'], axis=1, inplace=True)
+cols_from_to = { 'Length': 'length', 'Matches': 'aln_match_count', 'Clipped': 'clipped', 'MAPQ sum': 'mapq_sum', 'Edit distance': 'edit_dist' }
 seq_alns.rename(columns=cols_from_to, inplace=True)
 seq_alns.set_index('ID', inplace=True)
 
@@ -70,8 +70,8 @@ seqs = seqs.join(seq_alns)
 seqs.loc[seqs.aln_match_count.isna(), 'aln_match_count'] = 0
 seqs.sort_values(by=['length', 'avg_depth'], inplace=True)
 
-write_cols = ['length', 'avg_depth', 'GC', 'copynum_est', 'aln_match_count', 'aln_other_count', 'aln_other_cigars', 'aln_mapq']
-header = ['Length', 'Average depth', 'GC %', 'Likeliest copy #', 'Alignments (alns)', 'Other alns', 'Other-aln CIGARs', 'MAPQ (unique aln only)']
+write_cols = ['length', 'avg_depth', 'GC', 'copynum_est', 'aln_match_count', 'mapq_sum']
+header = ['Length', 'Average depth', 'GC %', 'Likeliest copy #', 'Alignments (alns)', 'MAPQ sum']
 seqs.loc[:, write_cols].to_csv('seq-est-and-aln.csv', header=header, index_label='ID')
 
 mins = [0, 100, 1000, 10000]
