@@ -130,6 +130,8 @@ def get_sorted_depth_vals(seq_depth_vals):
 
 def get_density_grid(seqs, depths, grid_min, est_max, grid_dens, components):
     smallest_assned_cpnum = components[components.depth_min < np.inf].iloc[0]
+    if smallest_assned_cpnum.copynum == 0:
+        smallest_assned_cpnum = components[components.depth_min < np.inf].iloc[1]
     mode = smallest_assned_cpnum.cpnum_mean / smallest_assned_cpnum.copynum
     depths_98th_pctile, est_max_rel_ub = np.quantile(depths, 0.98), 1.75 * est_max * mode
     if depths[-1] < est_max_rel_ub:
@@ -215,7 +217,10 @@ def compute_and_plot_population_densities(components, seqs, title_suffix, filena
     fig, ax = plt.subplots(figsize = (15, 10))
     for i in range(components.shape[0]):
         if np.isnan(components.iloc[i].gamma_shape):
-            densities[i] = components.iloc[i].weight * stats.norm.pdf(density_grid, components.iloc[i].cpnum_mean, components.iloc[i].cpnum_stdev)
+            if components.iloc[i].copynum > 0:
+                densities[i] = components.iloc[i].weight * stats.norm.pdf(density_grid, components.iloc[i].cpnum_mean, components.iloc[i].cpnum_stdev)
+            else:
+                densities[i] = components.iloc[i].weight * stats.expon.pdf(density_grid, 0, components.iloc[i].cpnum_mean)
         else:
             densities[i] = components.iloc[i].weight * stats.gamma.pdf(density_grid, components.iloc[i].gamma_shape, components.iloc[i].gamma_loc, components.iloc[i].gamma_scale)
         ax.plot(density_grid, densities[i], color = COLOURS[i], linestyle = '--', lw = 1, label = 'Copy # ' + str(components.iloc[i].copynum) + ' population density')
