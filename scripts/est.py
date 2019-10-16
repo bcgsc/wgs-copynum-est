@@ -6,12 +6,21 @@ from lmfit import Model, Parameter, Parameters
 from lmfit.models import ConstantModel, ExponentialModel, GaussianModel
 import math as m
 import numpy as np
+import os
 import pandas as pd
 import re
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.distributions.empirical_distribution import ECDF
+import sys
 import time
+
+if os.getenv('WGS_COPYNUM_EST_HOME'):
+  sys.path.insert(0, os.path.join(os.getenv('WGS_COPYNUM_EST_HOME'), 'scripts'))
+else:
+  raise RuntimeError('Please set environment variable WGS_COPYNUM_EST_HOME before running script')
+
+import utils
 
 
 def compute_gc_content(seq):
@@ -20,34 +29,6 @@ def compute_gc_content(seq):
         if b == 'G' or b == 'C':
             gc_count += 1
     return (gc_count * 100 / len(seq))
-
-def get_length_gps_for_est(seqs, len_percentiles_uniq, bin_minsize):
-    length_gps = []
-    ub = np.Inf
-    lb_idx = len(len_percentiles_uniq) - 1
-    while len(seqs[seqs.len < ub]) >= bin_minsize:
-        while len(seqs[(seqs.len < ub) & (seqs.len >= len_percentiles_uniq[lb_idx])]) < bin_minsize:
-            lb_idx -= 1
-        i = 1
-        base_gp = seqs[(seqs.len < ub) & (seqs.len >= len_percentiles_uniq[lb_idx])].mean_kmer_depth.values
-        while stats.ks_2samp(base_gp, seqs[(seqs.len < ub) & (seqs.len >= len_percentiles_uniq[lb_idx - i])].mean_kmer_depth.values).pvalue > 0.05:
-            i += 1
-            if lb_idx < i:
-                break
-        if lb_idx < i:
-            lb = -np.inf
-        else:
-            lb = len_percentiles_uniq[lb_idx - i + 1]
-            if len(seqs[seqs.len < lb]) < len(seqs[(seqs.len < ub) & (seqs.len >= lb)]): # unlikely; hopefully never happens
-                lb = -np.inf
-            else:
-                lb = len_percentiles_uniq[lb_idx - i + 1]
-        length_gp = seqs[(seqs.len < ub) & (seqs.len >= lb)]
-        length_gps.append(length_gp)
-        bin_minsize = len(length_gp)
-        ub = lb
-    length_gps.reverse()
-    return length_gps
 
 def val_to_grid_idx(val, grid_density, minval):
     return (grid_density * (val - minval))
@@ -549,14 +530,7 @@ seqs['likeliest_copynum'] = -1.0
 seqs.set_index('ID', inplace=True)
 seqs.sort_values(by=['len', 'mean_kmer_depth'], inplace=True)
 
-# adjust BIN_MIN as # of copy-number components to be estimated and variance increases (i.e. as length decreases)
-BIN_MINSIZE = min(500, numseqs)
-quantile = max(BIN_MINSIZE/numseqs, 0.0025) * 100
-if quantile > 0.25:
-    quantile = 100 / m.floor(100 / quantile) # (Basically) the next smallest possible equally sized bins
-
-len_percentiles_uniq = np.unique(np.percentile(seqs.len.values, np.arange(quantile, 100, quantile), interpolation='higher'))
-length_gps_for_est = get_length_gps_for_est(seqs, len_percentiles_uniq, BIN_MINSIZE)
+length_gps_for_est = utils.get_contig_length_gps(seqs, seqs.len)
 length_gps_count = len(length_gps_for_est)
 length_gp_medians = list(map(lambda gp: gp.len.median(), length_gps_for_est))
 
