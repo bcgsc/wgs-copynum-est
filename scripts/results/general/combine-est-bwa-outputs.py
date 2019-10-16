@@ -9,10 +9,10 @@ argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy 
 argparser.add_argument('--use_est_len_gps', action="store_true", help='Divide sequences by length groups used in estimation')
 argparser.add_argument("est_output", type=str, help="CSV file listing sequence data and classifications")
 argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequence length groups used in classification, with summary statistics")
-argparser.add_argument("bwa_parse_output", type=str, help="BWA alignment output SAM file")
+argparser.add_argument("bwa_parse_output", type=str, help="Parsed contig data from BWA reference alignment output SAM file")
 args = argparser.parse_args()
 
-def count_and_write(max_components_est, seqs, cat=None):
+def count_and_write(max_components_est, seqs, filename):
   est_components = [0]
   if HALF and (max_components_est > 0):
     est_components.append(0.5)
@@ -22,8 +22,6 @@ def count_and_write(max_components_est, seqs, cat=None):
   for i in est_components[1:]:
     cols.extend([i, 'avg_avg_depths_' + str(i), 'avg_gc_' + str(i)])
   aln_est = pd.DataFrame(None, index=est_components, columns=cols)
-  if cat is not None:
-    seqs = seqs[(seqs.length >= mins[cat]) & (seqs.length <= maxs[cat])]
   for i in est_components:
     for j in est_components:
       seqs_ij = seqs[(((seqs.len_gp_est_components >= i) & (seqs.aln_match_count == i)) | ((seqs.len_gp_est_components == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
@@ -39,10 +37,12 @@ def count_and_write(max_components_est, seqs, cat=None):
   for i in est_components[1:]:
     idx_dict[i] = str(i) + ' (+)'
   aln_est.rename(index=idx_dict)
-  if cat is not None:
-    aln_est.to_csv(count_files[cat], header=header, index_label='Aln\Est')
-  else:
-    aln_est.to_csv('aln-est_counts.csv', header=header, index_label='Aln\Est')
+  aln_est.to_csv(filename, header=header, index_label='Aln\Est')
+
+def get_best_alnmt_count(dist_counts_str):
+  if type(dist_counts_str) is str:
+    return int(dist_counts_str.split(',')[0].split(':')[1])
+  return 0
 
 
 seqs = pd.read_csv(args.est_output)
@@ -58,41 +58,37 @@ if max_components_est > 0.5:
   max_components_est = int(max_components_est)
 
 seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[m.floor(gp)])
+del len_gp_est_component_counts
 
 seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
 seq_alns.drop(['Length', 'GC content'], axis=1, inplace=True)
-cols_from_to = { 'Length': 'length', 'Matches': 'aln_match_count', 'Clipped': 'clipped', 'MAPQ sum': 'mapq_sum', 'Edit distance': 'edit_dist' }
+cols_from_to = { 'Length': 'length', 'Matches': 'matches', 'Clipped': 'clipped', 'MAPQ sum': 'mapq_sum', 'Edit distance': 'edit_dist' }
 seq_alns.rename(columns=cols_from_to, inplace=True)
 seq_alns.set_index('ID', inplace=True)
-
-seq_alns['aln_match_count'] = seq_alns.aln_match_count.apply(lambda i: m.ceil(i/2.0) if (i > 1 or not(HALF)) else 0.5 if i == 1 else 0) # alnmt counts still diploid
 seqs = seqs.join(seq_alns)
-seqs.loc[seqs.aln_match_count.isna(), 'aln_match_count'] = 0
+
+seqs['aln_match_count'] = seqs.edit_dist.apply(lambda dist_counts_str: get_best_alnmt_count(dist_counts_str))
+seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
 seqs.sort_values(by=['length', 'avg_depth'], inplace=True)
 
 write_cols = ['length', 'avg_depth', 'GC', 'copynum_est', 'aln_match_count', 'mapq_sum']
 header = ['Length', 'Average depth', 'GC %', 'Likeliest copy #', 'Alignments (alns)', 'MAPQ sum']
 seqs.loc[:, write_cols].to_csv('seq-est-and-aln.csv', header=header, index_label='ID')
 
-mins = [0, 100, 1000, 10000]
-maxs = [99, 999, 9999, np.inf]
-count_files = ['aln-est_counts_gte0lte99.csv', 'aln-est_counts_gte100lte999.csv', 'aln-est_counts_gte1000lte9999.csv', 'aln-est_counts_gte10000ltinf.csv']
 if args.use_est_len_gps:
-  mins = len_gp_stats['Min. len.']
-  maxs = len_gp_stats['Max. len.']
+  mins, maxs = len_gp_stats['Min. len.'].values, len_gp_stats['Max. len.'].values
+  len_gp_conditions = list(map(lambda bds: (seqs.length >= bds[0]) & (seqs.length <= bds[1]), zip(mins, maxs)))
   count_files = ['aln-est_counts_'] * len_gp_stats.shape[0]
-  for i in range(len_gp_stats.shape[0]):
-    ub_str = 'lt' + (maxs.iloc[i] < np.inf) * 'e' + str(maxs.iloc[i])
-    count_files[i] = count_files[i] + 'gte' + str(mins.iloc[i]) + ub_str + '.csv'
+  for i in range(len(mins)):
+    ub_str = 'lt' + (maxs[i] < np.inf) * 'e' + str(maxs[i])
+    count_files[i] = count_files[i] + 'gte' + str(mins[i]) + ub_str + '.csv'
+else:
+  mins = [0, 100, 1000, 10000]
+  maxs = [99, 999, 9999, np.inf]
+  len_gp_conditions = list(map(lambda bds: (seqs.length >= bds[0]) & (seqs.length <= bds[1]), zip(mins, maxs)))
+  count_files = ['aln-est_counts_gte0lte99.csv', 'aln-est_counts_gte100lte999.csv', 'aln-est_counts_gte1000lte9999.csv', 'aln-est_counts_gte10000ltinf.csv']
 
-for cat in range(len(mins)):
-  count_and_write(max_components_est, seqs, cat)
-
-est_components = [0]
-if HALF and (max_components_est > 0):
-  est_components.append(0.5)
-if max_components_est >= 1:
-  est_components = est_components + list(range(1, max_components_est + 1))
-
-count_and_write(max_components_est, seqs)
+for i in range(len(len_gp_conditions)):
+  count_and_write(max_components_est, seqs.loc[len_gp_conditions[i]], count_files[i])
+count_and_write(max_components_est, seqs, 'aln-est_counts.csv')
 
