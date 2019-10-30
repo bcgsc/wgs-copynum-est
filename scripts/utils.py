@@ -1,7 +1,9 @@
 # utils module
 
+from itertools import chain
 import math as m
 import numpy as np
+import pandas as pd
 from scipy import stats
 
 def get_contig_len_gp_min_quantile_size(lengp_minsize, numseqs, min_quantile = 0.0025):
@@ -38,4 +40,19 @@ def get_contig_length_gps(seqs, seqs_len):
       ub = lb
   length_gps.reverse()
   return length_gps
+
+def wide_to_long_from_listcol(df, variable_colname):
+  obs_counts = [len(x) for x in chain.from_iterable(df[variable_colname])]
+  df_long = pd.DataFrame(index=range(sum(obs_counts)), columns=df.columns)
+  for col in df.columns.tolist():
+    if col != variable_colname:
+      df_long[col] = np.repeat(df[col].values, obs_counts)
+    else:
+      df_long[variable_colname] = list(chain.from_iterable(chain.from_iterable(df[variable_colname])))
+  return df_long
+
+def valcounts_str_to_ints_list(dist_counts_str):
+  if type(dist_counts_str) is str:
+    return [list(chain.from_iterable(list(map(lambda pair: [int(pair[0])] * int(pair[1]), map(lambda dcount: dcount.split(':'), dist_counts_str.split(','))))))]
+  return [[np.nan]]
 
