@@ -47,6 +47,11 @@ def count_and_write(max_components_est, seqs, filename):
   aln_est.rename(index=idx_dict)
   aln_est.to_csv(filename, header=header, index_label='Aln\Est')
 
+def get_best_alnmt(dist_counts_str):
+  if type(dist_counts_str) is str:
+    return dist_counts_str.split(',')[0].split(':')
+  return None
+
 
 seqs = pd.read_csv(args.est_output)
 cols_from_to = { 'Length': 'length', 'Average k-mer depth': 'avg_depth', '1st Mode X': 'modex', 'GC %': 'GC', 'Estimation length group': 'len_gp', 'Likeliest copy #': 'copynum_est' }
@@ -91,12 +96,15 @@ for i in len_gp_idxs[:-1]:
     use_seq_iden_start_idx = i
     break
 
+seqs['best_alnmt'] = seqs.edit_dist_str.apply(lambda dist_counts_str: get_best_alnmt(dist_counts_str))
+seqs['best_edit_dist'] = seqs.best_alnmt.apply(lambda alnmt: int(alnmt[0]) if alnmt is not None else np.nan)
+seqs['aln_match_count'] = seqs.best_alnmt.apply(lambda alnmt: int(alnmt[1]) if alnmt is not None else np.nan)
 for i in range(use_seq_iden_start_idx):
-  seqs_long_gp = seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])]
-  gp_best_edit_dist_summary = seqs_long_gp.groupby('ID').edit_dist.agg('min').describe()
-  max_edit_dist = gp_best_edit_dist_summary.loc['mean'] + gp_best_edit_dist_summary.loc['std']
   len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
-  seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').edit_dist.apply(lambda dists: (dists <= max_edit_dist).sum())
+  len_gp_seqs = seqs[len_condition]
+  gp_best_edit_dist_summary = len_gp_seqs.best_edit_dist.describe()
+  max_edit_dist = gp_best_edit_dist_summary.loc['mean'] + gp_best_edit_dist_summary.loc['std']
+  seqs.loc[len_condition, 'aln_match_count'] = len_gp_seqs.apply(lambda seq: seq['aln_match_count'] if seq['best_edit_dist'] <= max_edit_dist else 0, axis=1)
 
 for i in range(use_seq_iden_start_idx, len_gps_count):
   seqs_long_gp = seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])]
@@ -104,6 +112,7 @@ for i in range(use_seq_iden_start_idx, len_gps_count):
   seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').seq_identity.apply(lambda seq_identities: (seq_identities >= 0.99).sum())
 
 seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: i if np.isnan(i) else m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
+seqs.drop(columns = ['best_alnmt', 'best_edit_dist'])
 seqs.sort_values(by=['length', 'avg_depth'], inplace=True)
 
 write_cols = ['length', 'avg_depth', 'GC', 'copynum_est', 'aln_match_count', 'mapq_sum']
