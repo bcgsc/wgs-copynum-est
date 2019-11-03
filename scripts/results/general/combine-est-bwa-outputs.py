@@ -4,6 +4,7 @@ import math as m
 import numpy as np
 import os
 import pandas as pd
+import statsmodels.api as sm
 import sys
 
 if os.getenv('WGS_COPYNUM_EST_HOME'):
@@ -84,17 +85,20 @@ seqs.sort_values(by='ID', inplace=True)
 seqs_long.sort_values(by='ID', inplace=True)
 mins, maxs = len_gp_stats['Min. len.'].values, len_gp_stats['Max. len.'].values
 len_gps_count, len_gp_idxs = len(mins), range(len(mins))
-est_cpnum_limits = []
-for i in len_gp_idxs:
-  seqs_gp = seqs[(seqs.length >= mins[i]) & (seqs.length <= maxs[i])]
-  est_cpnum_summary = seqs_gp.copynum_est.describe()
-  est_cpnum_limits.append(est_cpnum_summary.loc['mean'] + est_cpnum_summary.loc['std'])
 
-use_seq_iden_start_idx = len_gps_count
-for i in len_gp_idxs[:-1]:
-  if (est_cpnum_limits[i] < 1.5) and (est_cpnum_limits[i] > est_cpnum_limits[i+1]):
-    use_seq_iden_start_idx = i
-    break
+seq_gps = list(map(lambda i: seqs[(seqs.length >= mins[i]) & (seqs.length <= maxs[i])], len_gp_idxs))
+seq_gps_long = list(map(lambda i: seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])], len_gp_idxs))
+edit_dist_sums = list(map(lambda seqs: seqs.edit_dist.sum(), seq_gps_long))
+length_sums = list(map(lambda seqs_gp: seqs_gp.length.sum(), seq_gps))
+dist_len_ratios = list(map(lambda sums: sums[0] / sums[1], zip(edit_dist_sums, length_sums)))
+median_lengths = list(map(lambda seqs_gp: seqs_gp.length.median(), seq_gps))
+diffs = [0.0] * (len_gps_count - 2)
+for i in len_gp_idxs[1:-1]:
+  reg1 = sm.OLS(dist_len_ratios[:(i+1)], sm.add_constant(median_lengths[:(i+1)])).fit().params[1]
+  reg2 = sm.OLS(dist_len_ratios[i:], sm.add_constant(median_lengths[i:])).fit().params[1]
+  if (reg1 < 0) and (reg2 < 0):
+    diffs[i-1] = abs(reg1 - reg2)
+use_seq_iden_start_idx = np.argmax(diffs) + 2
 
 seqs['best_alnmt'] = seqs.edit_dist_str.apply(lambda dist_counts_str: get_best_alnmt(dist_counts_str))
 seqs['best_edit_dist'] = seqs.best_alnmt.apply(lambda alnmt: int(alnmt[0]) if alnmt is not None else np.nan)
