@@ -16,7 +16,7 @@ MATCHES_COLNAME = 'Matches'
 CLIPPED_COLNAME ='Clipped'
 MAPQ_SUM_COLNAME = 'MAPQ sum'
 GC_CONTENT_COLNAME = 'GC content'
-EDIT_DIST_COLNAME = 'Edit distance'
+EDIT_DIST_COLNAME = 'Edit distances'
 
 def compute_gc_content(seq):
     gc_count = 0

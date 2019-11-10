@@ -70,7 +70,7 @@ del len_gp_est_component_counts
 
 seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
 seq_alns.drop(['Length', 'GC content'], axis=1, inplace=True)
-cols_from_to = { 'Length': 'length', 'Matches': 'matches', 'Clipped': 'clipped', 'MAPQ sum': 'mapq_sum', 'Edit distance': 'edit_dist_str' }
+cols_from_to = { 'Length': 'length', 'Matches': 'matches', 'Clipped': 'clipped', 'MAPQ sum': 'mapq_sum', 'Edit distances': 'edit_dist_str' }
 seq_alns.rename(columns=cols_from_to, inplace=True)
 seq_alns['edit_dist_list'] = seq_alns.edit_dist_str.apply(lambda dcounts: utils.valcounts_str_to_ints_list(dcounts))
 seqs = seqs.merge(seq_alns, on='ID')
