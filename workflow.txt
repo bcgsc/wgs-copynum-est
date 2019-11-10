@@ -125,3 +125,6 @@ $ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.
 
 6. Compute classifier-to-ideal performance summary statistics ratios
 $ <HOME>/utils/compare_est-ideal-stats_loop.sh
+
+7. (Can be done earlier if omitting estimation results.) Plot alignment feature (e.g. edit distance, perfect match) distributions by sequence length and depth, and optionally by estimated copy number.
+$ python <HOME>/scripts/utils/alignment-stats_plots.py <k> <ref_aln_counts_csv> abyss-out/<unitigs_fasta> <alnmt_stats_plots_folder> [aln_est_counts]
