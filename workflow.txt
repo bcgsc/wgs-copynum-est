@@ -100,7 +100,7 @@ $ python <HOME>/scripts/est.py [--half] abyss-out/<unitigs_fasta> <k> results/<o
 
 Combine estimation and reference alignment data; output goes to <seq_aln_and_est>, and <aln_est_counts> and <aln_est_ranks> files
 $ cd results/<output_dir>/
-$ python <HOME>/scripts/results/process/combine-est-bwa-outputs.py [--use_est_len_gps] <est_seq_labels> <est_len_gp_stats> ../../../aln/w5d50/<ref_aln_counts_csv>
+$ python <HOME>/scripts/results/general/combine-est-bwa-outputs.py [--use_est_len_gps] <est_seq_labels> <est_len_gp_stats> ../../../aln/w5d50/<ref_aln_counts_csv>
 Create folders for "full" and summary results; move files accordingly:
 $ mkdir full
 $ mkdir summary
