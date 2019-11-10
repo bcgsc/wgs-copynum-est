@@ -85,14 +85,21 @@ def get_aln_copynum_bounds(kdes_normed, kde_grid):
     lbs = pd.Series([np.inf] * len(kdes_normed), index = kdes_normed.keys())
     lbs[cpnum_assnmts[0]] = 0
     for i in range(1, cpnum_assnmts.size):
-        intersection_idxs = np.argwhere(np.diff(np.sign(kdes_normed[cpnum_assnmts.iloc[i]] - kdes_normed[cpnum_assnmts.iloc[i-1]])) > 0)
-        intersections = intersection_idxs[(intersection_idxs > np.argmax(kdes_normed[cpnum_assnmts.iloc[i-1]])) & (intersection_idxs < np.argmax(kdes_normed[cpnum_assnmts.iloc[i]]))] # between peaks
-        if intersections.size == 0:
-            intersections = intersection_idxs[(intersection_idxs < np.argmax(kdes_normed[cpnum_assnmts.iloc[i-1]])) & (intersection_idxs < np.argmax(kdes_normed[cpnum_assnmts.iloc[i]]))] # before peaks
+        intersections = np.array([])
+        if kdes_normed[cpnum_assnmts.iloc[i-1]] is not None:
+            intersection_idxs = np.argwhere(np.diff(np.sign(kdes_normed[cpnum_assnmts.iloc[i]] - kdes_normed[cpnum_assnmts.iloc[i-1]])) > 0)
+            # between peaks
+            intersections = intersection_idxs[(intersection_idxs > np.argmax(kdes_normed[cpnum_assnmts.iloc[i-1]])) & (intersection_idxs < np.argmax(kdes_normed[cpnum_assnmts.iloc[i]]))]
             if intersections.size == 0:
-                intersections = intersection_idxs[(intersection_idxs > np.argmax(kdes_normed[cpnum_assnmts.iloc[i-1]])) & (intersection_idxs > np.argmax(kdes_normed[cpnum_assnmts.iloc[i]]))] # after peaks
-        if intersections.size:
-            lbs[cpnum_assnmts.iloc[i]] = kde_grid[intersections[0]]
+                # before peaks
+                intersections = intersection_idxs[(intersection_idxs < np.argmax(kdes_normed[cpnum_assnmts.iloc[i-1]])) & (intersection_idxs < np.argmax(kdes_normed[cpnum_assnmts.iloc[i]]))]
+                if intersections.size == 0:
+                    # after peaks
+                    intersections = intersection_idxs[(intersection_idxs > np.argmax(kdes_normed[cpnum_assnmts.iloc[i-1]])) & (intersection_idxs > np.argmax(kdes_normed[cpnum_assnmts.iloc[i]]))]
+            if intersections.size:
+                lbs[cpnum_assnmts.iloc[i]] = kde_grid[intersections[0]]
+        else:
+            lbs[cpnum_assnmts.iloc[i]] = kde_grid[0]
     return lbs
 
 def compute_ideal_stats(tps, counts_aln, positives):
