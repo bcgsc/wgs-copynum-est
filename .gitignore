@@ -1,9 +1,6 @@
 archive/
+data/
 examples/
 
 .RData
 .Rhistory
-
-notes.txt
-scratch.txt
-compute-stats-loop.sh
