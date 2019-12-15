@@ -92,27 +92,29 @@ length_sums = list(map(lambda seqs_gp: seqs_gp.length.sum(), seq_gps))
 dist_len_ratios = list(map(lambda sums: sums[0] / sums[1], zip(edit_dist_sums, length_sums)))
 median_lengths = list(map(lambda seqs_gp: seqs_gp.length.median(), seq_gps))
 diffs = [0.0] * (len_gps_count - 2)
-for i in len_gp_idxs[1:-1]:
-  reg1 = sm.OLS(dist_len_ratios[:(i+1)], sm.add_constant(median_lengths[:(i+1)])).fit().params[1]
-  reg2 = sm.OLS(dist_len_ratios[i:], sm.add_constant(median_lengths[i:])).fit().params[1]
-  if (reg1 < 0) and (reg2 < 0):
-    diffs[i-1] = abs(reg1 - reg2)
-use_seq_iden_start_idx = np.argmax(diffs) + 2
+use_seq_iden_start_idx = None
+if len(diffs) > 0:
+  for i in len_gp_idxs[1:-1]:
+    reg1 = sm.OLS(dist_len_ratios[:(i+1)], sm.add_constant(median_lengths[:(i+1)])).fit().params[1]
+    reg2 = sm.OLS(dist_len_ratios[i:], sm.add_constant(median_lengths[i:])).fit().params[1]
+    if (reg1 < 0) and (reg2 < 0):
+      diffs[i-1] = abs(reg1 - reg2)
+  use_seq_iden_start_idx = np.argmax(diffs) + 2
 
 seqs['best_alnmt'] = seqs.edit_dist_str.apply(lambda dist_counts_str: get_best_alnmt(dist_counts_str))
 seqs['best_edit_dist'] = seqs.best_alnmt.apply(lambda alnmt: int(alnmt[0]) if alnmt is not None else np.nan)
 seqs['aln_match_count'] = seqs.best_alnmt.apply(lambda alnmt: int(alnmt[1]) if alnmt is not None else np.nan)
-for i in range(use_seq_iden_start_idx):
-  len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
-  len_gp_seqs = seqs[len_condition]
-  gp_best_edit_dist_summary = len_gp_seqs.best_edit_dist.describe()
-  max_edit_dist = gp_best_edit_dist_summary.loc['mean'] + gp_best_edit_dist_summary.loc['std']
-  seqs.loc[len_condition, 'aln_match_count'] = len_gp_seqs.apply(lambda seq: seq['aln_match_count'] if seq['best_edit_dist'] <= max_edit_dist else 0, axis=1)
-
-for i in range(use_seq_iden_start_idx, len_gps_count):
-  seqs_long_gp = seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])]
-  len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
-  seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').seq_identity.apply(lambda seq_identities: (seq_identities >= 0.99).sum())
+if use_seq_iden_start_idx:
+  for i in range(use_seq_iden_start_idx):
+    len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
+    len_gp_seqs = seqs[len_condition]
+    gp_best_edit_dist_summary = len_gp_seqs.best_edit_dist.describe()
+    max_edit_dist = gp_best_edit_dist_summary.loc['mean'] + gp_best_edit_dist_summary.loc['std']
+    seqs.loc[len_condition, 'aln_match_count'] = len_gp_seqs.apply(lambda seq: seq['aln_match_count'] if seq['best_edit_dist'] <= max_edit_dist else 0, axis=1)
+  for i in range(use_seq_iden_start_idx, len_gps_count):
+    seqs_long_gp = seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])]
+    len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
+    seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').seq_identity.apply(lambda seq_identities: (seq_identities >= 0.99).sum())
 
 seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: i if np.isnan(i) else m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
 seqs.drop(columns = ['best_alnmt', 'best_edit_dist'])
