@@ -1,5 +1,4 @@
 import argparse
-import csv
 import math as m
 import numpy as np
 import os
