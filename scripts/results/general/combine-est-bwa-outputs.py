@@ -134,8 +134,9 @@ else:
   maxs = [99, 999, 9999, np.inf]
   count_files = ['aln-est_counts_gte0lte99.csv', 'aln-est_counts_gte100lte999.csv', 'aln-est_counts_gte1000lte9999.csv', 'aln-est_counts_gte10000ltinf.csv']
 
-len_gp_conditions = list(map(lambda bds: (seqs.length >= bds[0]) & (seqs.length <= bds[1]), zip(mins, maxs)))
+seqs_aln_defined = seqs.loc[seqs.aln_match_count.notna()]
+len_gp_conditions = list(map(lambda bds: (seqs_aln_defined.length >= bds[0]) & (seqs_aln_defined.length <= bds[1]), zip(mins, maxs)))
 for i in range(len(len_gp_conditions)):
-  count_and_write(max_components_est, seqs.loc[len_gp_conditions[i]], count_files[i])
-count_and_write(max_components_est, seqs, 'aln-est_counts.csv')
+  count_and_write(max_components_est, seqs_aln_defined.loc[len_gp_conditions[i]], count_files[i])
+count_and_write(max_components_est, seqs_aln_defined, 'aln-est_counts.csv')
 
