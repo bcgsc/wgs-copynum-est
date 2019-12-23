@@ -502,6 +502,7 @@ args = argparser.parse_args()
 
 NONNEG_CONSTANT = 1.e-12
 
+seq_IDs = array.array('L')
 seq_lens = array.array('L')
 seq_mean_kmer_depths = array.array('d')
 seq_gc_contents = array.array('d')
@@ -511,6 +512,7 @@ with open(args.unitigs_file) as unitigs:
     while line:
         if re.search('^>[0-9]', line):
             row = list(map(int, line[1:].split()))
+            seq_IDs.append(row[0])
             seq_lens.append(row[1])
             kmers = row[1] - args.kmer_len + 1
             seq_mean_kmer_depths.append(row[2] / kmers)
@@ -521,7 +523,7 @@ with open(args.unitigs_file) as unitigs:
 # TODO: Remove modex?
 numseqs = len(seq_mean_kmer_depths)
 seqs = pd.DataFrame(columns=['ID', 'len', 'mean_kmer_depth', 'modex', 'gc', 'est_gp', 'likeliest_copynum'])
-seqs['ID'] = range(numseqs)
+seqs['ID'] = seq_IDs
 seqs['len'] = seq_lens
 seqs['mean_kmer_depth'] = seq_mean_kmer_depths
 seqs['gc'] = seq_gc_contents
