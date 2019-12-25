@@ -19,7 +19,7 @@ GC_CONTENT_COLNAME = 'GC content'
 EDIT_DIST_COLNAME = 'Edit distances'
 
 def compute_gc_content(seq):
-    gc_count = 0
+    gc_count = 0.0
     for b in seq:
         if b == 'G' or b == 'C':
             gc_count += 1
@@ -69,26 +69,32 @@ args = argparser.parse_args()
 
 csv.field_size_limit(sys.maxsize)
 
-with open(args.samfilename, newline='') as samfile:
-    reader = csv.reader(samfile, delimiter='\t')
-    with open(args.outfilename, 'w', newline='') as outfile:
-        writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=[ID_COLNAME, LENGTH_COLNAME, MATCHES_COLNAME, CLIPPED_COLNAME, MAPQ_SUM_COLNAME, GC_CONTENT_COLNAME, EDIT_DIST_COLNAME])
-        writer.writeheader()
-        row = next(reader)
+samfile = open(args.samfilename, newline='')
+row = samfile.readline()
+while not(re.match('^@SQ', row)):
+    row = samfile.readline()
+while re.match('^@SQ', row):
+    row = samfile.readline()
+outfile = open(args.outfilename, 'w', newline='')
+writer = csv.DictWriter(outfile, delimiter='\t', fieldnames=[ID_COLNAME, LENGTH_COLNAME, MATCHES_COLNAME, CLIPPED_COLNAME, MAPQ_SUM_COLNAME, GC_CONTENT_COLNAME, EDIT_DIST_COLNAME])
+writer.writeheader()
+reader = csv.reader(samfile, delimiter='\t')
+row = next(reader)
+seq_dict = init_seq_dict(row)
+if is_mapped(int(row[FLAGS_COL])):
+    update_match_info(row, seq_dict)
+for row in reader:
+    if not(re.match('^\d+$', row[0])):
+        break
+    if int(row[ID_COL]) == seq_dict[ID_COLNAME]:
+        if is_mapped(int(row[FLAGS_COL])):
+            update_match_info(row, seq_dict)
+    else:
+        seq_dict[EDIT_DIST_COLNAME] = str(seq_dict[EDIT_DIST_COLNAME])[1:-1].replace(' ', '')
+        writer.writerow(seq_dict)
         seq_dict = init_seq_dict(row)
         if is_mapped(int(row[FLAGS_COL])):
             update_match_info(row, seq_dict)
-        i = 1
-        for row in reader:
-            if int(row[ID_COL]) == seq_dict[ID_COLNAME]:
-                if is_mapped(int(row[FLAGS_COL])):
-                    update_match_info(row, seq_dict)
-            else:
-                seq_dict[EDIT_DIST_COLNAME] = str(seq_dict[EDIT_DIST_COLNAME])[1:-1].replace(' ', '')
-                writer.writerow(seq_dict)
-                seq_dict = init_seq_dict(row)
-                if is_mapped(int(row[FLAGS_COL])):
-                    update_match_info(row, seq_dict)
-        seq_dict[EDIT_DIST_COLNAME] = str(seq_dict[EDIT_DIST_COLNAME])[1:-1].replace(' ', '')
-        writer.writerow(seq_dict)
-
+seq_dict[EDIT_DIST_COLNAME] = str(seq_dict[EDIT_DIST_COLNAME])[1:-1].replace(' ', '')
+writer.writerow(seq_dict)
+samfile.close()
