@@ -1,31 +1,47 @@
 #!/bin/bash
 
-set -eu -o pipefail
+export TMPDIR=/var/tmp
 
-# for OpenMPI
-export PATH=/home/benv/bin/mpi:$PATH
-export LD_LIBRARY_PATH=/home/benv/lib
+if [ $# -ne 5 ]; then
+	echo "Usage: $(basename $0) <kmer size> <num threads> <PE reads file 1> <PE reads file 2> <output prefix> " >&2
+	exit 1
+fi
 
-# OpenMPI tweaks
-eager_limit=16384
-export mpirun="mpirun --mca btl_sm_eager_limit $eager_limit --mca btl_openib_eager_limit $eager_limit"
+set -eux -o pipefail
 
-# for ABySS binaries
-export PATH=/projects/btl/benv/arch/xhost/abyss-2.0.2/jemalloc-4.5.0/maxk256/bin:$PATH
+# Prevents MPI deadlocks at higher k values
+export mpirun="/gsc/btl/linuxbrew/Cellar/open-mpi/2.1.3/bin/mpirun --mca btl_sm_eager_limit 16000 --mca btl_openib_eager_limit 16000"
 
-# input reads (must use absolute paths)
-read1=$1
-shift
-read2=$1
-shift
+k=$1; shift
+j=$1; shift
+reads1=$1; shift
+reads2=$1; shift
+prefix=$1; shift
 
-# k-mer size
-k=$1
-shift
+# Choosing the ABySS binary with the closest maxk to the specified k
+if [ $k -le 96 ]; then
+	  maxk=96
+elif [ $k -le 128 ]; then
+	  maxk=128
+elif [ $k -le 160 ]; then
+	  maxk=160
+elif [ $k -le 192 ]; then
+	  maxk=192
+elif [ $k -le 224 ]; then
+	  maxk=224
+elif [ $k -le 256 ]; then
+	  maxk=256
+else
+	  echo "No ABYSS binary available for k > 256!" >&2
+	  exit 1
+fi
 
-# create and switch to assembly dir
-dir=k$k
-mkdir -p $dir
-cd $dir
+# ABySS version to use
+export PATH=/projects/btl/jowong/bin/abyss-2.2.3-mpi-2.1.3/bin:$PATH
+# put `zsh` on PATH so that `abyss-pe` will zsh-profile assembly commands
+export PATH=/gsc/btl/linuxbrew/Cellar/zsh/5.4.2_3/bin:$PATH
 
-abyss-pe v=-v k=$k name=celegans np=12 j=12 in="$read1 $read2" "$@"
+# run the assembly
+abyss_bin=/projects/btl/jowong/bin/abyss-2.2.3-mpi-2.1.3/bin
+/usr/bin/time -f "pctCPU=%P avgmem=%K maxRSS=%M elapsed=%E cpu.sys=%S cpu.user=%U" ${abyss_bin}/abyss-pe \
+    name=$prefix k=$k j=$j np=$j v=-v in="$reads1 $reads2" $prefix-2.dot ABYSS_OPTIONS="-b0"
