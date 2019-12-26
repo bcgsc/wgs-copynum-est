@@ -2,7 +2,11 @@
 Workflow (from copy-num-est root directory)
 ---------
 
-Note: <HOME> indicates project home, e.g. /projects/btl/yflim/copy-num-est
+Note:
+a. <HOME> indicates project home, e.g. /projects/btl/yflim/copy-num-est
+b. Dataset (genome) used as example(s) below not consistent; e.g. some use C. elegans, while others use Bovine adenovirus, or some use real and some simulated data.
+c. Relative locations of folders in examples below may not always be accurate.
+
 
 1. Can be done just once per strain/whatever (defined as association with one reference genome)
 
@@ -21,110 +25,44 @@ $ bwa index reference/celegans.N2.genome.fa
 
 Create folder for datasets, e.g.:
 $ mkdir datasets
-...
 
 Create folder(s) for simulations, e.g.:
 $ mkdir simulations
 $ cd simulations
 $ mkdir 50x
 $ cd 50x
-$ mkdir diploid
-$ cd diploid
-$ dwgsim -e 0.001-0.015 -E 0.002-0.03 -d 150 -C 50 -1 150 -2 150 -n 100 ../../../reference_genomes/celegans.N2.genome.fa diploid.fastq
-$ cd ..
-$ mkdir haploid
-$ cd haploid
-$ dwgsim -e 0.001-0.015 -E 0.002-0.03 -d 150 -C 50 -1 150 -2 150 -n 100 -H ../../../reference_genomes/celegans.N2.genome.fa diploid.fastq
-$ cd ..
+$ <HOME>/scripts/utils/sim_mutate-ref_idx.sh -e 0.001-0.005 -E 0.002-0.01 -L 150 -C 30 [-H] ../../../reference_genomes/celegans.N2.genome.fa
 
-Write mutated reference from simulation:
-$ python <HOME>/scripts/utils/simulations/write_mutated_reference.py ../../../reference_genomes/N2/celegans.N2.genome.fa diploid/diploid.fastq.mutations.txt
-Index for BWA:
-bwa index diploid/diploid.fastq.mutations.txt
+2. Can be done just once per dataset (including each set of simulated reads). (Starting from strain folder, data/celegans/N2.)
 
+Create folder for (real genome) dataset, e.g. (first cd back to datasets folder):
+$ cd ../..
+$ mkdir DRR008444/
 
-2. Can be done just once per dataset (including each set of simulated reads). (Starting from species folder, data/celegans.)
+$ cd DRR008444/
 
-Create folder for dataset, e.g.:
-$ mkdir datasets/DRR008444/
+Create folder for reads and copy dataset read files into it, e.g.:
+$ mkdir reads
+$ cp <reads_filepath> reads
 
-$ cd datasets/DRR008444/
-
-Copy dataset read files into folder, e.g.:
-$ cp <read1_filepath> .
-
-$ mkdir k80
-$ cd k80
+Run ntcard over a range of possible ks, in order to choose a few best candidates based on output k-mer frequency (read coverage) histograms:
+$ mkdir ntcard
+$ cd ntcard
+$ <HOME>/scripts/utils/run-and-plot_ntcard.sh 60 5 120 kmer-freq ../reads/diploid.fastq.bwa.read1.fastq ../reads/diploid.fastq.bwa.read2.fastq
 
 Assemble reads, e.g.:
-$ <HOME>/scripts/run-abyss.sh <HOME>/data/celegans/N2/datasets/DRR008444/DRR008444_1.fastq <HOME>/data/celegans/N2/datasets/DRR008444/DRR008444_2.fastq 80
-ABySS creates a "k-" subfolder, e.g. k80, for its output files:
-$ mv k80 abyss-out
-
-Create folder for alignment, e.g.:
-$ mkdir aln
-[$ mkdir aln/w5d50]
-
-Run BWA-mem to align unitigs to reference; output to SAM file. E.g.:
-a. For a real sequencing dataset:
-$ bwa mem -a -k 80 -w 5 -d 50 -c 10000 ../../../reference/<genome_fa> abyss-out/<unitigs_fa> > aln/w5d50/<ref_aln_sam>
-$ cd aln/w5d50/
-b. For a simulated dataset:
-$ bwa mem -a ../../../reference/<genome_fa> abyss-out/<unitigs_fa> > aln/<ref_aln_sam>
-$ cat aln/<ref_aln_sam> | perl -ne 'print if /\t\d+M\t/ && /NM:i:0/' > aln/<perfect_matches_sam>
-
-Edit out header from <ref_aln_sam>, e.g.:
-$ cp <ref_aln_sam> <ref_aln_sam_cp>
-$ vim <ref_aln_sam_cp>
-
-Parse SAM; write to <ref_aln_counts_csv>
-a. For a real sequencing dataset:
-$ python <HOME>/scripts/utils/sam-parse.py <ref_aln_sam_cp> <ref_aln_counts_csv>
-b. For a simulated dataset:
-$ python <HOME>/scripts/utils/sam-parse.py aln/<perfect_matches_sam> aln/<ref_aln_counts_csv>
-
-Remove error and missing logs if empty, e.g.:
-$ rm aln/w5d50/<error_log>
-$ rm aln/w5d50/<missing_seqs_log>
-
-[$ cd ../..]
-
-Create folder for estimation results:
-$ mkdir results
-$ mkdir results/<date>
-
-3. Create folder for specific estimator version results and file describing version details; run estimator, which writes to output files in <output_dir>
-$ mkdir results/<output_dir>
-$ vim results/<output_dir>/meta.txt
-$ python <HOME>/scripts/est.py [--half] abyss-out/<unitigs_fasta> <k> results/<output_dir>
-
-Combine estimation and reference alignment data; output goes to <seq_aln_and_est>, and <aln_est_counts> and <aln_est_ranks> files
-$ cd results/<output_dir>/
-$ python <HOME>/scripts/results/general/combine-est-bwa-outputs.py [--use_est_len_gps] <est_seq_labels> <est_len_gp_stats> ../../../aln/w5d50/<ref_aln_counts_csv>
-Create folders for "full" and summary results; move files accordingly:
-$ mkdir full
-$ mkdir summary
-$ mv <seq_aln_and_est> full
-$ mv <est_seq_labels> full
+$ cd ..
+$ mkdir k70
+$ cd k70
+$ <HOME>/scripts/utils/abyss-and-aln.sh 70 2 ../reads/haploid.fastq.bwa.read1.fastq ../reads/haploid.fastq.bwa.read2.fastq bovine-adenovirus 1 ../mutations/Bovine_adenovirus_6.mutated.fa
+$ cd ..
+$ mkdir k75
 ...
 
-4. Compute summary stats; repeat for the various groups (e.g. sequences shorter than 100bps, etc.)
-$ cd summary
-Note that the following requires the environment variable WGS_COPYNUM_EST_HOME to be set.
-The script is not in the repo; I added then decided to remove it for now due to it always being apparently edited even when I hadn't done anything, or some issue like that.
-$ <HOME>/scripts/utils/compute-stats-loop.sh
+$ cd k<k>
+$ <HOME>/scripts/utils/est-and-eval.sh -Hei bovine-adenovirus 80
+OR
+$ <HOME>/scripts/utils/est-and-eval.sh -h -e|o [-i] celegans 80
 
-5. Create plots; compute ideal (best-possible) classifier performance summary statistics.
-$ cd ..
-$ mkdir plots
-$ mkdir plots/observed
-[$ mkdir ideal]
-$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py [--use_oom_len_gps] full/<seq_aln_and_est> summary/<est_len_gp_stats> summary/<copynum_stats_file> plots/observed <plots_file_prefix> [ideal]
-[$ mkdir plots/population]
-[$ python <HOME>/scripts/results/general/component-densities_ideal-summary-stats.py --plot_est_population_densities full/<seq_aln_and_est> summary/<est_len_gp_stats> summary/<copynum_stats_file> plots/population <plots_file_prefix>]
-
-6. Compute classifier-to-ideal performance summary statistics ratios
-$ <HOME>/utils/compare_est-ideal-stats_loop.sh
-
-7. (Can be done earlier if omitting estimation results.) Plot alignment feature (e.g. edit distance, perfect match) distributions by sequence length and depth, and optionally by estimated copy number.
+3. (Can be done earlier if omitting estimation results.) Plot alignment feature (e.g. edit distance, perfect match) distributions by sequence length and depth, and optionally by estimated copy number.
 $ python <HOME>/scripts/utils/alignment-stats_plots.py <k> <ref_aln_counts_csv> abyss-out/<unitigs_fasta> <alnmt_stats_plots_folder> [aln_est_counts]
