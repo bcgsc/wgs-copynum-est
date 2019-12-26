@@ -237,6 +237,10 @@ def compute_and_plot_population_densities(components, seqs, title_suffix, filena
 
 
 all_seqs = pd.read_csv(args.seq_est_aln_file)
+if all_seqs.shape[0] < 2:
+  print('Trivial assembly and estimation output: only 1 sequence.\nExiting.')
+  sys.exit()
+
 all_seqs.rename(index=str, inplace=True,
     columns = { 'Length': 'length', 'Average depth': 'mean_kmer_depth', 'GC %': 'GC', 'Likeliest copy #': 'likeliest_copynum',
                 'Alignments (alns)': 'alns', 'Other alns': 'other_alns', 'Other-aln CIGARs': 'other_aln_cigars', 'MAPQ (unique aln only)': 'unique_aln_mapq' })

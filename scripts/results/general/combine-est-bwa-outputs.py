@@ -14,6 +14,7 @@ else:
 import utils
 
 argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy number estimator outputs for classified sequences")
+argparser.add_argument('--haploid', action="store_true", help='Dataset comes from haploid rather than diploid genome')
 argparser.add_argument('--use_est_len_gps', action="store_true", help='Divide sequences by length groups used in estimation')
 argparser.add_argument("est_output", type=str, help="CSV file listing sequence data and classifications")
 argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequence length groups used in classification, with summary statistics")
@@ -116,7 +117,8 @@ if use_seq_iden_start_idx:
     len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
     seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').seq_identity.apply(lambda seq_identities: (seq_identities >= 0.99).sum())
 
-seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: i if np.isnan(i) else m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
+if not(args.haploid):
+  seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: i if np.isnan(i) else m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
 seqs.drop(columns = ['best_alnmt', 'best_edit_dist'])
 seqs.sort_values(by=['length', 'avg_depth'], inplace=True)
 

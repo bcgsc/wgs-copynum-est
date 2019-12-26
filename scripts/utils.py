@@ -18,6 +18,8 @@ def get_contig_length_gps(seqs, seqs_len):
   length_gps = []
   ub = np.Inf
   len_percentiles_uniq = np.unique(np.percentile(seqs_len.values, np.arange(min_quantile_size, 100, min_quantile_size), interpolation='higher'))
+  if len(len_percentiles_uniq) < 1:
+      return [seqs]
   lb_idx = len(len_percentiles_uniq) - 1
   while len(seqs[seqs_len < ub]) >= bin_minsize:
       while len(seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx])]) < bin_minsize:
