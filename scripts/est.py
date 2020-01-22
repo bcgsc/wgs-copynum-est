@@ -422,6 +422,7 @@ def compute_likeliest_copynums(maxdensity_copynums, maxdens_cpnums_change_idxs):
         maxdens_change_cpnums[1:] = maxdensity_copynums.iloc[maxdens_cpnums_change_idxs]
     return maxdens_change_cpnums
 
+# Initial assignments might be slightly out of order: have to infer orderly final assignments
 def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums):
     copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
     # Note: 0 does not have an entry in copynum_lbs and copynum_ubs.
@@ -674,7 +675,6 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
         likeliest_copynum_ubs = copynum_densities.columns[likeliest_copynum_ub_idxs]
         copynum_assnmts, copynum_lbs, copynum_ubs = assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums)
 
-        ## Initial assignments might be slightly out of order: have to infer orderly final assignments
         # Assign to sequences in the corresponding ranges
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
         assign_sequence_copynums(seqs, gp_len_condition, len_gp_idx, mode, copynum_assnmts, copynum_lbs, copynum_ubs)
