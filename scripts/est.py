@@ -230,7 +230,7 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
                     params[model.prefix + 'amplitude1'].set(vary = False, expr = components[idx].prefix + 'amplitude1 + ' + components[idx].prefix + 'ampdiff')
                 else:
                     params[model.prefix + 'amplitude1'].set(vary = False, expr = components[idx].prefix + 'amplitude')
-                diffval = component_weights[j] - component_weights[j-1]
+                diffval = component_weights[j] - component_weights[(j-1) or 0.5]
                 if diffval > 0:
                     diffval = -0.05
                 params[model.prefix + 'ampdiff'].set(value = diffval, max = 0)
