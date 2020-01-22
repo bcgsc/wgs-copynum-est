@@ -6,6 +6,14 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+
+def compute_gc_content(seq):
+    gc_count = 0
+    for b in seq:
+        if b == 'G' or b == 'C':
+            gc_count += 1
+    return (gc_count * 100 / len(seq))
+
 def get_contig_len_gp_min_quantile_size(lengp_minsize, numseqs, min_quantile = 0.0025):
   quantile = max(lengp_minsize/numseqs, min_quantile) * 100
   if quantile > min_quantile * 100:

@@ -23,13 +23,6 @@ else:
 import utils
 
 
-def compute_gc_content(seq):
-    gc_count = 0
-    for b in seq:
-        if b == 'G' or b == 'C':
-            gc_count += 1
-    return (gc_count * 100 / len(seq))
-
 def val_to_grid_idx(val, grid_density, minval):
     return (grid_density * (val - minval))
 
@@ -544,7 +537,7 @@ with open(args.unitigs_file) as unitigs:
             kmers = row[1] - args.kmer_len + 1
             seq_mean_kmer_depths.append(row[2] / kmers)
         else:
-            seq_gc_contents.append(compute_gc_content(line))
+            seq_gc_contents.append(utils.compute_gc_content(line))
         line = unitigs.readline()
 
 # TODO: Remove modex?
