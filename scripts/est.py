@@ -637,6 +637,8 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
             error_msg = 'Lowest copy number for sequences of length ' + curr_len_gp_stats.min_len + ' to ' + curr_len_gp_stats.max_len + ' in dataset higher than 1: '
             error_msg += 'none are single-copy ' + int(not(args.haploid)) * ' (either homo- or heterozygous)!'
             raise RuntimeError(error_msg)
+        write_to_log(log_file, len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, curr_len_gp_stats.max_depth,
+                     depth_max_pctl, depth_max_pctl_rank, result.fit_report())
         aic_current += result.aic
         copynum_component_prefixes = set(map(lambda name: re.search(r'(([a-zA-Z]+\d??)_)', name).group(), result.params.valuesdict().keys())) - { 'dummy_', 'genomescale_' }
         use_gamma = ('gamma_' in copynum_component_prefixes)
@@ -689,9 +691,6 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
             return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, idx, copynum_lbs[idx], copynum_ubs[idx], wt, mean, sigma, loc, shape, scale]
 
         create_copynum_stats(smallest_copynum, copynums, args.half, result.params, copynum_component_prefixes, copynum_stats_hash)
-
-        write_to_log(log_file, len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, curr_len_gp_stats.max_depth,
-                     depth_max_pctl, depth_max_pctl_rank, result.fit_report())
     # End inner loop across sequence length groups
 
     copynum_stats.append(pd.DataFrame.from_dict(copynum_stats_hash))
