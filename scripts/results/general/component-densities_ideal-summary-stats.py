@@ -135,11 +135,7 @@ def get_sorted_depth_vals(seq_depth_vals):
     depths.sort()
     return depths
 
-def get_density_grid(seqs, depths, grid_min, est_max, grid_dens, components):
-    smallest_assned_cpnum = components[components.depth_min < np.inf].iloc[0]
-    if smallest_assned_cpnum.copynum == 0:
-        smallest_assned_cpnum = components[components.depth_min < np.inf].iloc[1]
-    mode = smallest_assned_cpnum.cpnum_mean / smallest_assned_cpnum.copynum
+def get_density_grid(seqs, depths, grid_min, est_max, grid_dens, mode):
     depths_98th_pctile, est_max_rel_ub = np.quantile(depths, 0.98), 1.75 * est_max * mode
     if depths[-1] < est_max_rel_ub:
         grid_max = depths[-1] + MAX_OFFSET
@@ -150,7 +146,7 @@ def get_density_grid(seqs, depths, grid_min, est_max, grid_dens, components):
     elif seqs.loc[seqs.likeliest_copynum == est_max,].mean_kmer_depth.mean() > est_max_rel_ub:
         grid_max = est_max_rel_ub + MAX_OFFSET
     else:
-        grid_max = (est_max + 1) * mode + MAX_OFFSET
+        grid_max = (((est_max + 1) * mode) or depths_98th_pctile) + MAX_OFFSET
     return np.linspace(grid_min, grid_max, grid_dens * (grid_max - grid_min) + 1)
 
 def get_normalised_kdes(seqs_attr, kde_grid, counts, total_count):
@@ -216,10 +212,10 @@ def write_counts(counts, rowmax, cpnums_all, filepath_prefix):
         header = ['Min. len.', 'Max. len'] + list(map(lambda n: 'copy # ' + str(n), cpnums_all)) + ['Len. gp. total'])
     csv.writer(open(filepath_prefix + '.csv', 'a')).writerow(['All'] + counts.loc[rowmax].tolist())
 
-def compute_and_plot_population_densities(components, seqs, title_suffix, filename_prefix):
+def compute_and_plot_population_densities(components, seqs, mode, title_suffix, filename_prefix):
     est_max = get_max_copynum(seqs.likeliest_copynum)
     depths = get_sorted_depth_vals(seqs.mean_kmer_depth.values)
-    density_grid = get_density_grid(seqs, depths, 0, est_max, 50, components)
+    density_grid = get_density_grid(seqs, depths, 0, est_max, 50, mode)
     densities = np.zeros([components.shape[0], density_grid.size])
     fig, ax = plt.subplots(figsize = (15, 10))
     for i in range(components.shape[0]):
@@ -254,6 +250,9 @@ HALF = ((all_seqs.likeliest_copynum == 0.5).sum() > 0)
 MAX_INT_COPYNUM = 8 + int(not(HALF))
 COLOURS = [ 'xkcd:azure', 'xkcd:coral', 'xkcd:darkgreen', 'xkcd:gold', 'xkcd:plum', 'xkcd:darkblue', 'xkcd:olive', 'xkcd:magenta', 'xkcd:chocolate', 'xkcd:yellowgreen' ]
 
+smallest_cpnum = all_components.loc[all_components.depth_min < np.inf].iloc[0]
+MODE = smallest_cpnum.cpnum_mean / smallest_cpnum.copynum
+
 lbs, ubs = pd.Series([0, 100, 1000, 10000]), pd.Series([99, 999, 9999, np.Inf])
 if not(args.use_oom_len_gps):
     len_gp_stats = pd.read_csv(args.est_len_gp_stats)
@@ -265,7 +264,7 @@ if not(args.plot_est_population_densities):
     seqs_est, seqs_aln = get_seqs_attr_per_cpnum(all_seqs, 'likeliest_copynum', cpnums_all), get_seqs_attr_per_cpnum(all_seqs, 'alns', cpnums_all)
     est_counts, aln_counts = get_counts(seqs_est), get_counts(seqs_aln)
     depths = get_sorted_depth_vals(all_seqs.mean_kmer_depth.values)
-    kde_grid = get_density_grid(all_seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum_all, 100, all_components) # can replace 100 by some other density
+    kde_grid = get_density_grid(all_seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum_all, 100, MODE) # can replace 100 by some other density
     est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
     aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
     plot_kdes(kde_grid, cpnums_all, est_kdes_normed, aln_kdes_normed, depths, 'of all lengths', os.path.join(args.plots_folder, args.plots_file_prefix))
@@ -295,7 +294,7 @@ for i in range(len(ubs)):
         else:
             curr_components = all_components.loc[(all_components.group_min_len == lb) & (all_components.group_max_len == ub),]
         if args.plot_est_population_densities:
-            compute_and_plot_population_densities(curr_components, seqs, 'with length in [' + str(lb) + ', ' + label_ub,
+            compute_and_plot_population_densities(curr_components, seqs, MODE, 'with length in [' + str(lb) + ', ' + label_ub,
                 os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
         else:
             est_max_cpnum = get_max_copynum(seqs.likeliest_copynum)
@@ -303,7 +302,7 @@ for i in range(len(ubs)):
             seqs_est, seqs_aln = get_seqs_attr_per_cpnum(seqs, 'likeliest_copynum', cpnums), get_seqs_attr_per_cpnum(seqs, 'alns', cpnums)
             est_counts, aln_counts = get_counts(seqs_est), get_counts(seqs_aln)
             depths = get_sorted_depth_vals(seqs.mean_kmer_depth.values)
-            kde_grid = get_density_grid(seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum, 100, curr_components) # can replace 100 by some other density
+            kde_grid = get_density_grid(seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum, 100, MODE) # can replace 100 by some other density
             aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
             if args.use_oom_len_gps:
                 est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
