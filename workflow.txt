@@ -60,9 +60,9 @@ $ mkdir k75
 ...
 
 $ cd k<k>
-$ <HOME>/scripts/utils/est-and-eval.sh -Hei bovine-adenovirus 80
+$ <HOME>/scripts/utils/est-and-eval.sh -H -e|o [-i] bovine-adenovirus <k>
 OR
-$ <HOME>/scripts/utils/est-and-eval.sh -h -e|o [-i] celegans 80
+$ <HOME>/scripts/utils/est-and-eval.sh -h -e|o [-i] celegans <k>
 
 3. (Can be done earlier if omitting estimation results.) Plot alignment feature (e.g. edit distance, perfect match) distributions by sequence length and depth, and optionally by estimated copy number.
 $ python <HOME>/scripts/utils/alignment-stats_plots.py <k> <ref_aln_counts_csv> abyss-out/<unitigs_fasta> <alnmt_stats_plots_folder> [aln_est_counts]
