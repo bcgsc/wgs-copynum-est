@@ -667,8 +667,6 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
                     copynum_densities.loc[cpnum] = copynum_densities.loc[cpnum].apply(lambda x: compute_density_at(x, prefix, result.params))
 
         if 'exp_' not in copynum_component_prefixes:
-            density0_test = copynum_densities.loc[0].copy()
-            nonzero_densities_sum = copynum_densities.loc[1:].apply(sum)
             copynum_densities.loc[0] = copynum_densities.loc[0] - copynum_densities.iloc[1:].sum()
 
         maxdensity_copynums = copynum_densities.idxmax()
