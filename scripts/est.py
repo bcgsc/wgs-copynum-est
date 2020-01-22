@@ -448,7 +448,11 @@ def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynu
                 copynum_ubs[copynum_assnmts[-1]] = likeliest_copynum_ubs[i-1]
             copynum_assnmts.append(likeliest_copynums[i])
             copynums_unique.add(likeliest_copynums[i])
-    if copynum_assnmts[-1] < reserve_copynum:
+    # To keep from putting upper bound of penultimate cpnum at intersection between higher copy number and tail of lower copy number.
+    # Ideally, would record and check whether reserve_copynum and copynum_assnmts[-1] were assigned in the same iteration
+    # (the current order seems likelier to be correct if multiple copy numbers were assigned after the reserve), but
+    # this already works as well as or better than omitting it (in like 29/30 cases), and changing it would require a whole bunch more testing
+    if len(copynum_assnmts) > 1 and (copynum_assnmts[-1] < reserve_copynum):
         copynum_lbs[copynum_assnmts[-1]] = np.inf
         copynum_assnmts.pop()
         copynum_lbs[reserve_copynum] = reserve_bd
