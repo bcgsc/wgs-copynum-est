@@ -17,8 +17,8 @@ argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy 
 argparser.add_argument('--haploid', action="store_true", help='Dataset comes from haploid rather than diploid genome')
 argparser.add_argument('--use_est_len_gps', action="store_true", help='Divide sequences by length groups used in estimation')
 argparser.add_argument("est_output", type=str, help="CSV file listing sequence data and classifications")
-argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequence length groups used in classification, with summary statistics")
 argparser.add_argument("bwa_parse_output", type=str, help="Parsed contig data from BWA reference alignment output SAM file")
+argparser.add_argument("est_len_gp_stats", type=str, nargs='?', help="CSV file listing sequence length groups used in classification, with summary statistics")
 args = argparser.parse_args()
 
 def count_and_write(max_components_est, seqs, filename):
@@ -59,14 +59,18 @@ cols_from_to = { 'Length': 'length', 'Average k-mer depth': 'avg_depth', '1st Mo
 seqs.rename(columns=cols_from_to, inplace=True)
 HALF = ((seqs.copynum_est == 0.5).sum() > 0)
 
-len_gp_stats = pd.read_csv(args.est_len_gp_stats)
-len_gp_est_component_counts = len_gp_stats['Largest copy # estimated'].tolist()
-max_components_est = max(len_gp_est_component_counts)
+if args.est_len_gp_stats:
+  len_gp_stats = pd.read_csv(args.est_len_gp_stats)
+  len_gp_est_component_counts = len_gp_stats['Largest copy # estimated'].tolist()
+  max_components_est = max(len_gp_est_component_counts)
+  seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[m.floor(gp)])
+  del len_gp_est_component_counts
+else:
+  seqs = seqs[seqs.length == seqs.length.min()]
+  max_components_est = seqs.copynum_est.max()
+  seqs['len_gp_est_components'] = max_components_est
 if max_components_est > 0.5:
   max_components_est = int(max_components_est)
-
-seqs['len_gp_est_components'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[m.floor(gp)])
-del len_gp_est_component_counts
 
 seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
 seq_alns.drop(['Length', 'GC content'], axis=1, inplace=True)
@@ -83,24 +87,26 @@ seqs_long['seq_identity'] = (seqs_long.length - seqs_long.edit_dist) * 1.0 / seq
 seqs.set_index('ID', inplace=True)
 seqs.sort_values(by='ID', inplace=True)
 seqs_long.sort_values(by='ID', inplace=True)
-mins, maxs = len_gp_stats['Min. len.'].values, len_gp_stats['Max. len.'].values
-len_gps_count, len_gp_idxs = len(mins), range(len(mins))
 
-seq_gps = list(map(lambda i: seqs[(seqs.length >= mins[i]) & (seqs.length <= maxs[i])], len_gp_idxs))
-seq_gps_long = list(map(lambda i: seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])], len_gp_idxs))
-edit_dist_sums = list(map(lambda seqs: seqs.edit_dist.sum(), seq_gps_long))
-length_sums = list(map(lambda seqs_gp: seqs_gp.length.sum(), seq_gps))
-dist_len_ratios = list(map(lambda sums: sums[0] / sums[1], zip(edit_dist_sums, length_sums)))
-median_lengths = list(map(lambda seqs_gp: seqs_gp.length.median(), seq_gps))
-diffs = [0.0] * (len_gps_count - 2)
 use_seq_iden_start_idx = None
-if len(diffs) > 0:
-  for i in len_gp_idxs[1:-1]:
-    reg1 = sm.OLS(dist_len_ratios[:(i+1)], sm.add_constant(median_lengths[:(i+1)])).fit().params[1]
-    reg2 = sm.OLS(dist_len_ratios[i:], sm.add_constant(median_lengths[i:])).fit().params[1]
-    if (reg1 < 0) and (reg2 < 0):
-      diffs[i-1] = abs(reg1 - reg2)
-  use_seq_iden_start_idx = np.argmax(diffs) + 2
+if args.est_len_gp_stats:
+  mins, maxs = len_gp_stats['Min. len.'].values, len_gp_stats['Max. len.'].values
+  len_gps_count, len_gp_idxs = len(mins), range(len(mins))
+  seq_gps = list(map(lambda i: seqs[(seqs.length >= mins[i]) & (seqs.length <= maxs[i])], len_gp_idxs))
+  seq_gps_long = list(map(lambda i: seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])], len_gp_idxs))
+  edit_dist_sums = list(map(lambda seqs: seqs.edit_dist.sum(), seq_gps_long))
+  length_sums = list(map(lambda seqs_gp: seqs_gp.length.sum(), seq_gps))
+  dist_len_ratios = list(map(lambda sums: sums[0] / sums[1], zip(edit_dist_sums, length_sums)))
+  median_lengths = list(map(lambda seqs_gp: seqs_gp.length.median(), seq_gps))
+  diffs = [0.0] * (len_gps_count - 2)
+  use_seq_iden_start_idx = None
+  if len(diffs) > 0:
+    for i in len_gp_idxs[1:-1]:
+      reg1 = sm.OLS(dist_len_ratios[:(i+1)], sm.add_constant(median_lengths[:(i+1)])).fit().params[1]
+      reg2 = sm.OLS(dist_len_ratios[i:], sm.add_constant(median_lengths[i:])).fit().params[1]
+      if (reg1 < 0) and (reg2 < 0):
+        diffs[i-1] = abs(reg1 - reg2)
+    use_seq_iden_start_idx = np.argmax(diffs) + 2
 
 seqs['best_alnmt'] = seqs.edit_dist_str.apply(lambda dist_counts_str: get_best_alnmt(dist_counts_str))
 seqs['best_edit_dist'] = seqs.best_alnmt.apply(lambda alnmt: int(alnmt[0]) if alnmt is not None else np.nan)
@@ -116,6 +122,7 @@ if use_seq_iden_start_idx:
     seqs_long_gp = seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])]
     len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
     seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').seq_identity.apply(lambda seq_identities: (seq_identities >= 0.99).sum())
+  seqs.loc[seqs.best_edit_dist.isnull(), 'aln_match_count'] = np.nan
 
 if not(args.haploid):
   seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: i if np.isnan(i) else m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
@@ -131,10 +138,14 @@ if args.use_est_len_gps:
   for i in range(len(mins)):
     ub_str = 'lt' + (maxs[i] < np.inf) * 'e' + str(maxs[i])
     count_files[i] = count_files[i] + 'gte' + str(mins[i]) + ub_str + '.csv'
-else:
+elif args.est_len_gp_stats:
   mins = [0, 100, 1000, 10000]
   maxs = [99, 999, 9999, np.inf]
   count_files = ['aln-est_counts_gte0lte99.csv', 'aln-est_counts_gte100lte999.csv', 'aln-est_counts_gte1000lte9999.csv', 'aln-est_counts_gte10000ltinf.csv']
+else:
+  seqlen = seqs.length.iloc[0]
+  mins, maxs = [seqlen], [seqlen]
+  count_files = ['aln-est_counts.csv']
 
 seqs_aln_defined = seqs.loc[seqs.aln_match_count.notna()]
 len_gp_conditions = list(map(lambda bds: (seqs_aln_defined.length >= bds[0]) & (seqs_aln_defined.length <= bds[1]), zip(mins, maxs)))
