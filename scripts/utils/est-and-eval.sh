@@ -2,11 +2,11 @@
 
 haploid=""
 half=""
-use_est_len_gps=""
+use_length_strata=""
 use_oom_len_gps=""
 ideal=""
 
-while getopts "Hheoi" opt; do
+while getopts "Hhoi" opt; do
   case $opt in
     H)
       haploid="--haploid"
@@ -14,10 +14,8 @@ while getopts "Hheoi" opt; do
     h)
       half="--half"
       ;;
-    e)
-      use_est_len_gps="--use_est_len_gps"
-      ;;
     o)
+      use_length_strata="--use_length_strata o"
       use_oom_len_gps="--use_oom_len_gps"
       ;;
     i)
@@ -45,7 +43,7 @@ mkdir -p full
 mkdir -p summary
 mv sequence-labels.csv full/
 mv length_gp_stats.csv copynumber_params.csv summary/
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine-est-bwa-outputs.py $haploid $use_est_len_gps full/sequence-labels.csv ../aln/${name}_aln-counts.tsv summary/length_gp_stats.csv
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine-est-bwa-outputs.py $haploid $use_length_strata full/sequence-labels.csv ../aln/${name}_aln-counts.tsv summary/length_gp_stats.csv
 
 mv seq-est-and-aln.csv full/
 mv aln-est* summary/
