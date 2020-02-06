@@ -22,8 +22,9 @@ argparser.add_argument("bwa_parse_output", type=str, help="Parsed contig data fr
 argparser.add_argument("est_len_gp_stats", type=str, help="CSV file listing sequence length groups used in classification, with summary statistics")
 args = argparser.parse_args()
 
-def count_and_write(max_components_est, seqs, filename):
+def count_and_write(seqs, filename):
   est_components = [0]
+  max_components_est = seqs.len_gp_max_cpnum_est.max()
   if HALF and (max_components_est > 0):
     est_components.append(0.5)
   if max_components_est >= 1:
@@ -34,7 +35,7 @@ def count_and_write(max_components_est, seqs, filename):
   aln_est = pd.DataFrame(None, index=est_components, columns=cols)
   for i in est_components:
     for j in est_components:
-      seqs_ij = seqs[(((seqs.len_gp_max_cpnum_est >= i) & (seqs.aln_match_count == i)) | ((seqs.len_gp_max_cpnum_est == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
+      seqs_ij = seqs[(((max_components_est >= i) & (seqs.aln_match_count == i)) | ((max_components_est == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
       aln_est.loc[i, j] = seqs_ij.shape[0]
       if aln_est.loc[i, j] > 0:
         aln_est.loc[i, 'avg_avg_depths_' + str(j)] = seqs_ij.avg_depth.sum() / aln_est.loc[i, j]
@@ -63,15 +64,11 @@ len_gp_stats = pd.read_csv(args.est_len_gp_stats)
 HALF = ((len_gp_stats['Smallest copy # present'] == 0.5).sum() > 0)
 if args.use_length_strata == 'k':
   seqs = seqs[seqs.length == seqs.length.min()]
-  max_components_est = seqs.copynum_est.max()
-  seqs['len_gp_max_cpnum_est'] = max_components_est
+  seqs['len_gp_max_cpnum_est'] = seqs.copynum_est.max()
 else:
   len_gp_est_component_counts = len_gp_stats['Largest copy # estimated'].tolist()
-  max_components_est = max(len_gp_est_component_counts)
   seqs['len_gp_max_cpnum_est'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[int(gp)])
   del len_gp_est_component_counts
-if max_components_est > 0.5:
-  max_components_est = int(max_components_est)
 
 seq_alns = pd.read_csv(args.bwa_parse_output, delimiter='\t')
 seq_alns.drop(['Length', 'GC content'], axis=1, inplace=True)
@@ -164,6 +161,6 @@ else:
 seqs_aln_defined = seqs.loc[seqs.aln_match_count.notna()]
 len_gp_conditions = list(map(lambda bds: (seqs_aln_defined.length >= bds[0]) & (seqs_aln_defined.length <= bds[1]), minmaxes))
 for i in range(len(len_gp_conditions)):
-  count_and_write(max_components_est, seqs_aln_defined.loc[len_gp_conditions[i]], count_files[i])
-count_and_write(max_components_est, seqs_aln_defined, 'aln-est_counts.csv')
+  count_and_write(seqs_aln_defined.loc[len_gp_conditions[i]], count_files[i])
+count_and_write(seqs_aln_defined, 'aln-est_counts.csv')
 
