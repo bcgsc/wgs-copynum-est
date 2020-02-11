@@ -10,7 +10,7 @@ fi
 set -eux -o pipefail
 
 # Prevents MPI deadlocks at higher k values
-export mpirun="/gsc/btl/linuxbrew/Cellar/open-mpi/2.1.3/bin/mpirun --mca btl_sm_eager_limit 16000 --mca btl_openib_eager_limit 16000"
+export mpirun="mpirun --mca btl_sm_eager_limit 16000 --mca btl_openib_eager_limit 16000"
 
 k=$1; shift
 j=$1; shift
@@ -37,11 +37,11 @@ else
 fi
 
 # ABySS version to use
-export PATH=/projects/btl/jowong/bin/abyss-2.2.3-mpi-2.1.3/bin:$PATH
+export PATH=/gsc/btl/linuxbrew/Cellar/abyss/2.2.3/bin/:/gsc/btl/linuxbrew/bin:$PATH
 # put `zsh` on PATH so that `abyss-pe` will zsh-profile assembly commands
 export PATH=/gsc/btl/linuxbrew/Cellar/zsh/5.4.2_3/bin:$PATH
 
 # run the assembly
-abyss_bin=/projects/btl/jowong/bin/abyss-2.2.3-mpi-2.1.3/bin
+abyss_bin=/gsc/btl/linuxbrew/Cellar/abyss/2.2.3/bin
 /usr/bin/time -f "pctCPU=%P avgmem=%K maxRSS=%M elapsed=%E cpu.sys=%S cpu.user=%U" ${abyss_bin}/abyss-pe \
     name=$prefix k=$k j=$j np=$j v=-v in="$reads1 $reads2" $prefix-2.dot ABYSS_OPTIONS="-b0"
