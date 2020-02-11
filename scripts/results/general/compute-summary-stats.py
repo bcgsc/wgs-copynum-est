@@ -109,21 +109,23 @@ if HALF:
         do_half_stats('One', one_to_one, alnmt_counts_half1many[ONE_IDX], est_counts_1many[ONE_IDX])
         do_half_stats('Many', many_to_many, alnmt_counts_half1many[MANY_IDX], est_counts_1many[MANY_IDX])
 
+aln_est_combos.loc['Total'] = aln_est_combos.sum()
+aln_est_combos['Total'] = aln_est_combos.sum(axis=1)
 aln_est_combos.to_csv(args.counts_output_prefix + '_full.csv', header=map(lambda i: str(int(i)) if i != 0.5 else str(i), aln_est_combos.columns.values.tolist()), index_label='Aln\Est')
 
-alnmt_counts_full = pd.Series([0] * LABELS, index = aln_est_combos.index)
+alnmt_counts_full = pd.Series([0] * LABELS, index = aln_est_combos.index[:-1])
 for i in alnmt_counts_full.index:
-    alnmt_counts_full[i] = aln_est_combos.loc[i].sum()
-est_counts_full = pd.Series([0] * LABELS, index = aln_est_combos.index) # columns should be equal
+    alnmt_counts_full[i] = aln_est_combos.loc[i].iloc[:-1].sum()
+est_counts_full = pd.Series([0] * LABELS, index = aln_est_combos.index[:-1]) # columns should be equal
 for i in est_counts_full.index:
-    est_counts_full[i] = aln_est_combos[i].sum()
+    est_counts_full[i] = aln_est_combos[i].iloc[:-1].sum()
 
 with open(args.stats_output_prefix + '_full.csv', 'w') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(['Copy #', 'TPR', 'FNR', 'PPV', 'FDR', 'F1'])
-    rows = list(map(lambda i: [str(int(i)) if i != 0.5 else str(i)], aln_est_combos.index.tolist()))
+    rows = list(map(lambda i: [str(int(i)) if i != 0.5 else str(i)], aln_est_combos.index[:-1].tolist()))
     correct_counts = 0
-    for i in aln_est_combos.index:
+    for i in aln_est_combos.index[:-1]:
         if alnmt_counts_full[i] > 0:
             tpr = aln_est_combos.loc[i, i] * 1.0 / alnmt_counts_full[i]
         else:
@@ -137,6 +139,6 @@ with open(args.stats_output_prefix + '_full.csv', 'w') as csvfile:
             f1 = 2.0 * aln_est_combos.loc[i, i] / (alnmt_counts_full[i] + est_counts_full[i])
         writer.writerow([i, tpr, 1 - tpr, ppv, 1 - ppv, f1])
         correct_counts += aln_est_combos.loc[i, i]
-    overall_sensitivity = correct_counts * 1.0 / aln_est_combos.sum().sum()
+    overall_sensitivity = correct_counts * 1.0 / aln_est_combos.iloc[:-1, :-1].sum().sum()
     writer.writerow(['Overall', overall_sensitivity, 1 - overall_sensitivity, '', '', ''])
 
