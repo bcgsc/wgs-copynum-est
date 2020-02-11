@@ -1,5 +1,5 @@
 ---------
-Workflow (from copy-num-est root directory)
+Example workflow (from copy-num-est root directory)
 ---------
 
 Note:
@@ -66,3 +66,8 @@ $ <HOME>/scripts/utils/est-and-eval.sh -h[o][i] celegans <k>
 
 3. (Can be done earlier if omitting estimation results.) Plot alignment feature (e.g. edit distance, perfect match) distributions by sequence length and depth, and optionally by estimated copy number.
 $ python <HOME>/scripts/utils/alignment-stats_plots.py <k> <ref_aln_counts_csv> abyss-out/<unitigs_fasta> <alnmt_stats_plots_folder> [aln_est_counts]
+
+4. Fit, evaluate, and compare with GenomeScope
+$ mkdir ntcard/genomescope
+$ cp -r ntcard/hist ntcard/genomescope
+[$ <HOME>/scripts/genomescope/run-genomescope.sh 20 5 40 kmer-freq ../reads/diploid.fastq.bwa.read1.fastq ../reads/diploid.fastq.bwa.read2.fastq 150]
