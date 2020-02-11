@@ -71,3 +71,4 @@ $ python <HOME>/scripts/utils/alignment-stats_plots.py <k> <ref_aln_counts_csv> 
 $ mkdir ntcard/genomescope
 $ cp -r ntcard/hist ntcard/genomescope
 [$ <HOME>/scripts/genomescope/run-genomescope.sh 20 5 40 kmer-freq ../reads/diploid.fastq.bwa.read1.fastq ../reads/diploid.fastq.bwa.read2.fastq 150]
+$ <HOME>/scripts/genomescope/eval-genomescope.sh 80 celegans 2|3 ntcard/hist/kmer-freq ntcard/genomescope/out/converged/k80/ gs-cpnum-results est-cpnum-results
