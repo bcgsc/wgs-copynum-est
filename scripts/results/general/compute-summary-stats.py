@@ -69,24 +69,25 @@ with open(args.stats_output_prefix + '_1many.csv', 'w') as csvfile:
     writer.writerow([tpr, 1.0 - tpr, 1.0 - fpr, fpr, ppv, 1.0 - ppv, f1])
 
 if HALF:
+    has_one = (aln_est_combos.index.max() > 0.5)
     HALF_IDX = 0
     half_to_half = aln_est_combos.loc[0.5, 0.5]
-    one_to_one = aln_est_combos.loc[1, 1]
+    one_to_one = (has_one and aln_est_combos.loc[1, 1]) or 0
     alnmt_counts_half1many = [0, 0, 0]
     alnmt_counts_half1many[HALF_IDX] = aln_est_combos.loc[0.5, 0.5:].sum()
-    alnmt_counts_half1many[ONE_IDX] = aln_est_combos.loc[1, 0.5:].sum()
+    alnmt_counts_half1many[ONE_IDX] = int(has_one) and aln_est_combos.loc[1, 0.5:].sum()
     alnmt_counts_half1many[MANY_IDX] = aln_est_combos.loc[2:, 0.5:].sum().sum()
 
     with open(args.counts_output_prefix + '_half1many.csv', 'w') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['Aln.\Est.', 'Half', 'One', 'Many', 'Total'])
-        writer.writerow(['Half', half_to_half, aln_est_combos.loc[0.5, 1], aln_est_combos.loc[0.5, 2:].sum(), alnmt_counts_half1many[HALF_IDX]])
-        writer.writerow(['One', aln_est_combos.loc[1, 0.5], one_to_one, aln_est_combos.loc[1, 2:].sum(), alnmt_counts_half1many[ONE_IDX]])
-        writer.writerow(['Many', aln_est_combos.loc[2:, 0.5].sum(), aln_est_combos.loc[2:, 1].sum(), many_to_many, alnmt_counts_half1many[MANY_IDX]])
+        writer.writerow(['Half', half_to_half, int(has_one) and aln_est_combos.loc[0.5, 1], aln_est_combos.loc[0.5, 2:].sum(), alnmt_counts_half1many[HALF_IDX]])
+        writer.writerow(['One', int(has_one) and aln_est_combos.loc[1, 0.5], one_to_one, int(has_one) and aln_est_combos.loc[1, 2:].sum(), alnmt_counts_half1many[ONE_IDX]])
+        writer.writerow(['Many', aln_est_combos.loc[2:, 0.5].sum(), int(has_one) and aln_est_combos.loc[2:, 1].sum(), many_to_many, alnmt_counts_half1many[MANY_IDX]])
 
     est_counts_1many = [0, 0, 0]
     est_counts_1many[HALF_IDX] = aln_est_combos.loc[0.5:, 0.5].sum()
-    est_counts_1many[ONE_IDX] = aln_est_combos.loc[0.5:, 1].sum()
+    est_counts_1many[ONE_IDX] = int(has_one) and aln_est_combos.loc[0.5:, 1].sum()
     est_counts_1many[MANY_IDX] = aln_est_combos.loc[0.5:, 2:].sum().sum()
 
     def do_half_stats(cpnum, aln_to_est, aln, est):
