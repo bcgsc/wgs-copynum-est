@@ -37,7 +37,7 @@ def count_and_write(seqs, filename):
   aln_est = pd.DataFrame(None, index=est_components, columns=cols)
   for i in est_components:
     for j in est_components:
-      seqs_ij = seqs[(((max_components_est >= i) & (seqs.aln_match_count == i)) | ((max_components_est == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
+      seqs_ij = seqs[(((seqs.len_gp_max_cpnum_est >= i) & (seqs.aln_match_count == i)) | ((seqs.len_gp_max_cpnum_est == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
       aln_est.loc[i, j] = seqs_ij.shape[0]
       if aln_est.loc[i, j] > 0:
         aln_est.loc[i, 'avg_avg_depths_' + str(j)] = seqs_ij.avg_depth.sum() / aln_est.loc[i, j]
