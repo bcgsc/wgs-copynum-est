@@ -126,7 +126,6 @@ if use_seq_iden_start_idx:
     seqs_long_gp = seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])]
     len_condition = (seqs.length >= mins[i]) & (seqs.length <= maxs[i])
     seqs.loc[len_condition, 'aln_match_count'] = seqs_long_gp.groupby('ID').seq_identity.apply(lambda seq_identities: (seq_identities >= 0.99).sum())
-  seqs.loc[seqs.best_edit_dist.isnull(), 'aln_match_count'] = np.nan
 
 if not(args.haploid):
   seqs['aln_match_count'] = seqs.aln_match_count.apply(lambda i: i if np.isnan(i) else m.ceil(i/2.0) if (i != 1 or not(HALF)) else 0.5) # alnmt counts still diploid
