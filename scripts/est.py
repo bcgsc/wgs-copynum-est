@@ -176,18 +176,15 @@ def gaussian(x, amplitude1, ampdiff, center, sigma):
 
 # 'cgauss': custom Gaussian, to enforce decreasing weights after max-density depth
 def init_gaussian(i, component_weights, mode_copynum_ub):
-    model = None
     if component_weights[i] > 0:
         numstr = str(i)
         if i < 1:
             numstr = 'half'
         if i > mode_copynum_ub:
-            prefix = 'cgauss' + numstr + '_'
-            model = Model(gaussian, prefix=prefix)
+            return Model(gaussian, prefix='cgauss' + numstr + '_')
         else:
-            prefix = 'gauss' + numstr + '_'
-            model = GaussianModel(prefix=prefix)
-    return model
+            return GaussianModel(prefix='gauss' + numstr + '_')
+    return None
 
 def init_params(model):
     params = Parameters()
