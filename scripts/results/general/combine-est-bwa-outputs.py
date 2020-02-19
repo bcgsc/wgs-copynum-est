@@ -67,7 +67,7 @@ seqs.rename(columns=cols_from_to, inplace=True)
 
 if args.est_len_gp_stats:
   len_gp_stats = pd.read_csv(args.est_len_gp_stats)
-  HALF = ((len_gp_stats['Smallest copy # present'] == 0.5).sum() > 0)
+  HALF = ((len_gp_stats['Smallest copy # estimated'] == 0.5).sum() > 0)
   len_gp_est_component_counts = len_gp_stats['Largest copy # estimated'].tolist()
   seqs['len_gp_max_cpnum_est'] = seqs.len_gp.apply(lambda gp: len_gp_est_component_counts[int(gp)])
   del len_gp_est_component_counts
