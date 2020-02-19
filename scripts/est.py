@@ -218,15 +218,17 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
                 params[model.prefix + 'center'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'center')
                 params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
             if re.search(r'^cgauss', model.prefix):
+                diffval = component_weights[j] - component_weights[(j-1) or 0.5]
                 idx = (max(components.keys()) - 1) or 0.5 # should always be >= 1 if haploid
                 if re.search(r'^cgauss', components[idx].prefix):
                     params[model.prefix + 'amplitude1'].set(vary = False, expr = components[idx].prefix + 'amplitude1 + ' + components[idx].prefix + 'ampdiff')
+                    if diffval >= 0:
+                        params[model.prefix + 'ampdiff'].set(value = -0.05 * component_weights[j], max = 0)
+                    else:
+                        params[model.prefix + 'ampdiff'].set(value = diffval, max = 0)
                 else:
                     params[model.prefix + 'amplitude1'].set(vary = False, expr = components[idx].prefix + 'amplitude')
-                diffval = component_weights[j] - component_weights[(j-1) or 0.5]
-                if diffval > 0:
-                    diffval = -0.05
-                params[model.prefix + 'ampdiff'].set(value = diffval, max = 0)
+                    params[model.prefix + 'ampdiff'].set(value = diffval, max = max(diffval * 1.1, 0))
             else:
                 params[model.prefix + 'amplitude'].set(value = component_weights[j], min = NONNEG_CONSTANT, max = 1 - NONNEG_CONSTANT)
     return (components, copynum_components, params)
