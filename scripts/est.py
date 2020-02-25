@@ -599,13 +599,15 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
         sigma_min = set_sigma_min(result.params[smallest_copynum_prefix + 'sigma'], smallest_copynum, mode_error)
         length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
 
+        # The next 3 lines could in principle be written differently and more succinctly, but not in practice.
+        # I don't quite recall why they are necessary (without some effort), but they are.
         copynums = [0.0] + ([0.5] * args.half)
         if max_copynum_est > 0.5:
             copynums = copynums + list(range(1, max_copynum_est + 1))
         depths_grid = np.unique(np.concatenate((np.arange(grid_min + offset, depths[0], 0.02), np.array(depths))))
         copynum_densities = pd.DataFrame(0.0, index = copynums, columns = depths_grid)
         for cpnum in copynums:
-            if (cpnum == 0) or (cpnum >= smallest_copynum):
+            if (cpnum == 0) or (cpnum >= smallest_copynum): # I don't quite recall why this is necessary (without some effort), but it is (redux)
                 if (cpnum > 0) or ('exp_' in copynum_component_prefixes):
                     copynum_densities.loc[cpnum] = depths_grid
                     prefix = get_component_prefix(cpnum, copynum_component_prefixes)
