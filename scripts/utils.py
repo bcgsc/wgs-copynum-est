@@ -8,11 +8,11 @@ from scipy import stats
 
 
 def compute_gc_content(seq):
-    gc_count = 0
-    for b in seq:
-        if b == 'G' or b == 'C':
-            gc_count += 1
-    return (gc_count * 100 / len(seq))
+  gc_count = 0
+  for b in seq:
+    if b == 'G' or b == 'C':
+      gc_count += 1
+  return (gc_count * 100 / len(seq))
 
 def get_contig_len_gp_min_quantile_size(lengp_minsize, numseqs, min_quantile = 0.0025):
   quantile = max(lengp_minsize/numseqs, min_quantile) * 100
@@ -52,51 +52,51 @@ def get_contig_length_gps(seqs, seqs_len):
   return length_gps
 
 def compute_likeliest_copynum_indices(maxdensity_copynums):
-    maxdens_cpnums_change_idxs = np.array([-1])
-    maxdens_cpnums_change_idxs = np.append(maxdens_cpnums_change_idxs, np.where(np.diff(maxdensity_copynums))[0])
-    maxdens_cpnums_change_idxs += 1
-    return maxdens_cpnums_change_idxs
+  maxdens_cpnums_change_idxs = np.array([-1])
+  maxdens_cpnums_change_idxs = np.append(maxdens_cpnums_change_idxs, np.where(np.diff(maxdensity_copynums))[0])
+  maxdens_cpnums_change_idxs += 1
+  return maxdens_cpnums_change_idxs
 
 def compute_likeliest_copynums(maxdensity_copynums, maxdens_cpnums_change_idxs):
-    return maxdensity_copynums.iloc[maxdens_cpnums_change_idxs].values
+  return maxdensity_copynums.iloc[maxdens_cpnums_change_idxs].values
 
 def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums):
-    copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
-    # Note: 0 does not have an entry in copynum_lbs and copynum_ubs.
-    copynum_lbs = pd.Series(np.inf, index=copynums)
-    copynum_ubs = pd.Series(np.inf, index=copynums)
-    copynum_lbs[copynum_assnmts[0]] = 0
-    # Initial assignments might be slightly out of order: have to infer orderly final assignments
-    # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
-    # (whereas 1, 4, 3, 2 could [copy#4 variance is larger than that of 3])
-    # 2a. Out-of-order copy#s are always followed eventually by in-order copy#s, e.g.: 1, 3, 2 will be followed eventually by a copy# >= 3
-    # b. With one possible exception at the end (accounted for by the last "if" clause)
-    reserve_copynum, reserve_bd = 0, np.inf
-    for i in range(1, len(likeliest_copynums)):
-        if likeliest_copynums[i] not in copynums_unique:
-            if likeliest_copynums[i] < copynum_assnmts[-1]:
-                reserve_copynum, reserve_bd = copynum_assnmts[-1], copynum_lbs[copynum_assnmts[-1]]
-                copynum_lbs[copynum_assnmts[-1]] = np.inf
-                copynums_unique.remove(copynum_assnmts[-1])
-                copynum_assnmts.pop()
-            if len(copynum_assnmts) == 0:
-                copynum_lbs[likeliest_copynums[i]] = 0
-            else:
-                copynum_lbs[likeliest_copynums[i]] = likeliest_copynum_ubs[i-1]
-                copynum_ubs[copynum_assnmts[-1]] = likeliest_copynum_ubs[i-1]
-            copynum_assnmts.append(likeliest_copynums[i])
-            copynums_unique.add(likeliest_copynums[i])
-    # To keep from putting upper bound of penultimate cpnum at intersection between higher copy number and tail of lower copy number.
-    # Ideally, would record and check whether reserve_copynum and copynum_assnmts[-1] were assigned in the same iteration
-    # (the current order seems likelier to be correct if multiple copy numbers were assigned after the reserve), but
-    # this already works as well as or better than omitting it (in like 29/30 cases), and changing it would require a whole bunch more testing
-    if len(copynum_assnmts) > 1 and (copynum_assnmts[-1] < reserve_copynum):
+  copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
+  # Note: 0 does not have an entry in copynum_lbs and copynum_ubs.
+  copynum_lbs = pd.Series(np.inf, index=copynums)
+  copynum_ubs = pd.Series(np.inf, index=copynums)
+  copynum_lbs[copynum_assnmts[0]] = 0
+  # Initial assignments might be slightly out of order: have to infer orderly final assignments
+  # Assume that 1. Larger copy#s don't occur in order before smaller copy#s, e.g. 1, 3, 4, 2 does not occur
+  # (whereas 1, 4, 3, 2 could [copy#4 variance is larger than that of 3])
+  # 2a. Out-of-order copy#s are always followed eventually by in-order copy#s, e.g.: 1, 3, 2 will be followed eventually by a copy# >= 3
+  # b. With one possible exception at the end (accounted for by the last "if" clause)
+  reserve_copynum, reserve_bd = 0, np.inf
+  for i in range(1, len(likeliest_copynums)):
+    if likeliest_copynums[i] not in copynums_unique:
+      if likeliest_copynums[i] < copynum_assnmts[-1]:
+        reserve_copynum, reserve_bd = copynum_assnmts[-1], copynum_lbs[copynum_assnmts[-1]]
         copynum_lbs[copynum_assnmts[-1]] = np.inf
+        copynums_unique.remove(copynum_assnmts[-1])
         copynum_assnmts.pop()
-        copynum_lbs[reserve_copynum] = reserve_bd
-        copynum_ubs[copynum_assnmts[-1]] = reserve_bd
-        copynum_assnmts.append(reserve_copynum)
-    return (copynum_assnmts, copynum_lbs, copynum_ubs)
+      if len(copynum_assnmts) == 0:
+        copynum_lbs[likeliest_copynums[i]] = 0
+      else:
+        copynum_lbs[likeliest_copynums[i]] = likeliest_copynum_ubs[i-1]
+        copynum_ubs[copynum_assnmts[-1]] = likeliest_copynum_ubs[i-1]
+      copynum_assnmts.append(likeliest_copynums[i])
+      copynums_unique.add(likeliest_copynums[i])
+  # To keep from putting upper bound of penultimate cpnum at intersection between higher copy number and tail of lower copy number.
+  # Ideally, would record and check whether reserve_copynum and copynum_assnmts[-1] were assigned in the same iteration
+  # (the current order seems likelier to be correct if multiple copy numbers were assigned after the reserve), but
+  # this already works as well as or better than omitting it (in like 29/30 cases), and changing it would require a whole bunch more testing
+  if len(copynum_assnmts) > 1 and (copynum_assnmts[-1] < reserve_copynum):
+    copynum_lbs[copynum_assnmts[-1]] = np.inf
+    copynum_assnmts.pop()
+    copynum_lbs[reserve_copynum] = reserve_bd
+    copynum_ubs[copynum_assnmts[-1]] = reserve_bd
+    copynum_assnmts.append(reserve_copynum)
+  return (copynum_assnmts, copynum_lbs, copynum_ubs)
 
 def get_cpnums_and_bounds(copynum_densities, copynums):
   maxdensity_copynums = copynum_densities.idxmax()
