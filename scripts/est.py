@@ -606,21 +606,31 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
         copynum_densities = pd.DataFrame(0.0, index = copynums, columns = depths_grid)
         for cpnum in copynums:
             if (cpnum == 0) or (cpnum >= smallest_copynum):
-                copynum_densities.loc[cpnum] = depths_grid
-                if (cpnum == 0) and ('exp_' not in copynum_component_prefixes):
-                    copynum_densities.loc[0] = copynum_densities.loc[0].apply(lambda x: get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density))
-                else:
+                if (cpnum > 0) or ('exp_' in copynum_component_prefixes):
+                    copynum_densities.loc[cpnum] = depths_grid
                     prefix = get_component_prefix(cpnum, copynum_component_prefixes)
                     copynum_densities.loc[cpnum] = copynum_densities.loc[cpnum].apply(lambda x: compute_density_at(x, prefix, result.params))
 
-        if 'exp_' not in copynum_component_prefixes:
-            copynum_densities.loc[0] = copynum_densities.loc[0] - copynum_densities.iloc[1:].sum()
-
-        maxdensity_copynums = copynum_densities.idxmax()
-        if ('exp_' not in copynum_component_prefixes) and (maxdensity_copynums.iloc[0] == 0):
-            nonzero_max_1 = np.where(np.diff(maxdensity_copynums))[0][0] + 1
-            copynum_densities.loc[0].iloc[nonzero_max_1:] = 0.0
         copynum_assnmts, copynum_lbs, copynum_ubs = utils.get_cpnums_and_bounds(copynum_densities, copynums)
+        if 'exp_' not in copynum_component_prefixes:
+            copynum_densities.loc[0] = depths_grid
+            copynum_densities.loc[0] = copynum_densities.loc[0].apply(lambda x: get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density))
+            copynum_densities.loc[0] = copynum_densities.loc[0] - copynum_densities.iloc[1:].sum()
+            ub0 = np.inf
+            ubd_copynums = copynum_ubs[copynum_ubs < np.inf]
+            if ubd_copynums.shape[0] > 0:
+                ub0 = ubd_copynums.iloc[0]
+            copynum_densities.loc[0, ub0:] = 0
+            maxdensity_cpnums = copynum_densities.loc[:, :ub0].idxmax()
+            likeliest_cpnum_ub_idxs = utils.compute_likeliest_copynum_indices(maxdensity_cpnums)
+            likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
+            zero_to_next = ((likeliest_cpnums[:-1] == 0) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
+            if (np.argwhere(zero_to_next).size == 0) and (likeliest_cpnums[0] == 0):
+                zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
+            if np.argwhere(zero_to_next).size:
+                boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(zero_to_next)[0][0]]]
+                copynum_lbs[0], copynum_ubs[0], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
+                copynum_assnmts.insert(0, 0)
 
         # Assign to sequences in the corresponding ranges
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
