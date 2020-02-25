@@ -105,6 +105,23 @@ def get_cpnums_and_bounds(copynum_densities, copynums):
   likeliest_copynum_bds = copynum_densities.columns[likeliest_copynum_bd_idxs]
   return assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_bds[1:], copynums)
 
+def impute_lowest_cpnum_and_bds(copynum_densities, cpnum, copynum_assnmts, copynum_lbs, copynum_ubs):
+  ub0 = np.inf
+  ubd_copynums = copynum_ubs[copynum_ubs < np.inf]
+  if ubd_copynums.shape[0] > 0:
+    ub0 = ubd_copynums.iloc[0]
+  copynum_densities.loc[cpnum, ub0:] = 0
+  maxdensity_cpnums = copynum_densities.loc[:, :ub0].idxmax()
+  likeliest_cpnum_ub_idxs = compute_likeliest_copynum_indices(maxdensity_cpnums)
+  likeliest_cpnums = compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
+  zero_to_next = ((likeliest_cpnums[:-1] == cpnum) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
+  if (np.argwhere(zero_to_next).size == 0) and (likeliest_cpnums[0] == cpnum):
+    zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
+  if np.argwhere(zero_to_next).size:
+    boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(zero_to_next)[0][0]]]
+    copynum_lbs[cpnum], copynum_ubs[cpnum], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
+    copynum_assnmts.insert(0, cpnum)
+
 def wide_to_long_from_listcol(df, variable_colname):
   obs_counts = [len(x) for x in chain.from_iterable(df[variable_colname])]
   df_long = pd.DataFrame(index=range(sum(obs_counts)), columns=df.columns)

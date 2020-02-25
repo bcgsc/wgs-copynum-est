@@ -616,21 +616,7 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
             copynum_densities.loc[0] = depths_grid
             copynum_densities.loc[0] = copynum_densities.loc[0].apply(lambda x: get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density))
             copynum_densities.loc[0] = copynum_densities.loc[0] - copynum_densities.iloc[1:].sum()
-            ub0 = np.inf
-            ubd_copynums = copynum_ubs[copynum_ubs < np.inf]
-            if ubd_copynums.shape[0] > 0:
-                ub0 = ubd_copynums.iloc[0]
-            copynum_densities.loc[0, ub0:] = 0
-            maxdensity_cpnums = copynum_densities.loc[:, :ub0].idxmax()
-            likeliest_cpnum_ub_idxs = utils.compute_likeliest_copynum_indices(maxdensity_cpnums)
-            likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
-            zero_to_next = ((likeliest_cpnums[:-1] == 0) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
-            if (np.argwhere(zero_to_next).size == 0) and (likeliest_cpnums[0] == 0):
-                zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
-            if np.argwhere(zero_to_next).size:
-                boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(zero_to_next)[0][0]]]
-                copynum_lbs[0], copynum_ubs[0], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
-                copynum_assnmts.insert(0, 0)
+            utils.impute_lowest_cpnum_and_bds(copynum_densities, 0, copynum_assnmts, copynum_lbs, copynum_ubs)
 
         # Assign to sequences in the corresponding ranges
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)

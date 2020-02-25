@@ -52,18 +52,7 @@ cvg_frequencies.loc[2] = hist.index.map(lambda k: ((2 * d * ((1-r)**k) * (1 - (1
 
 copynum_assnmts, copynum_lbs, copynum_ubs = utils.get_cpnums_and_bounds(cvg_frequencies, copynums)
 cvg_frequencies.loc[0] = hist.freq - cvg_frequencies.loc[0.5:].sum()
-ub0 = copynum_ubs[copynum_ubs < np.inf].iloc[0]
-cvg_frequencies.loc[0, ub0:] = 0
-maxdensity_cpnums = cvg_frequencies.loc[:, :ub0].idxmax()
-likeliest_cpnum_ub_idxs = utils.compute_likeliest_copynum_indices(maxdensity_cpnums)
-likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
-zero_to_next = ((likeliest_cpnums[:-1] == 0) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
-if (np.argwhere(zero_to_next).size == 0) and (likeliest_cpnums[0] == 0):
-    zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
-if np.argwhere(zero_to_next).size:
-    boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(zero_to_next)[0][0]]]
-    copynum_lbs[0], copynum_ubs[0], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
-    copynum_assnmts.insert(0, 0)
+utils.impute_lowest_cpnum_and_bds(cvg_frequencies, 0, copynum_assnmts, copynum_lbs, copynum_ubs)
 
 if args.max_cpnum_3:
   lb3 = copynum_lbs[copynum_lbs < np.inf].iloc[-1]
