@@ -66,7 +66,7 @@ if args.max_cpnum_3:
   likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
   prev_to_three = ((likeliest_cpnums[:-1] == copynum_assnmts[-1]) & (likeliest_cpnums[1:] == 3))
   if (np.argwhere(prev_to_three).size == 0) and (3 in likeliest_cpnums):
-      prev_to_three = ((likeliest_cpnums[:-1] < copynum_assnmts[-1]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
+      prev_to_three = ((likeliest_cpnums[:-1] < copynum_assnmts[-1]) & (likeliest_cpnums[1:] == copynum_assnmts[-1]))
   if np.argwhere(prev_to_three).size:
       boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(prev_to_three)[0][0]]]
       copynum_ubs[copynum_assnmts[-1]], copynum_lbs[3] = boundary, boundary
