@@ -52,18 +52,13 @@ def get_contig_length_gps(seqs, seqs_len):
   return length_gps
 
 def compute_likeliest_copynum_indices(maxdensity_copynums):
-    maxdens_cpnums_change_idxs = np.where(np.diff(maxdensity_copynums))[0]
-    if maxdens_cpnums_change_idxs.size == 0:
-        maxdens_cpnums_change_idxs = np.array([-1])
+    maxdens_cpnums_change_idxs = np.array([-1])
+    maxdens_cpnums_change_idxs = np.append(maxdens_cpnums_change_idxs, np.where(np.diff(maxdensity_copynums))[0])
     maxdens_cpnums_change_idxs += 1
     return maxdens_cpnums_change_idxs
 
 def compute_likeliest_copynums(maxdensity_copynums, maxdens_cpnums_change_idxs):
-    maxdens_change_cpnums = pd.Series([0.0] * (maxdens_cpnums_change_idxs.size + 1))
-    maxdens_change_cpnums[0] = maxdensity_copynums.iloc[0]
-    if maxdens_change_cpnums.size > 1:
-        maxdens_change_cpnums[1:] = maxdensity_copynums.iloc[maxdens_cpnums_change_idxs]
-    return maxdens_change_cpnums
+    return maxdensity_copynums.iloc[maxdens_cpnums_change_idxs].values
 
 def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums):
     copynum_assnmts, copynums_unique = [likeliest_copynums[0]], { likeliest_copynums[0] }
@@ -105,10 +100,10 @@ def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynu
 
 def get_cpnums_and_bounds(copynum_densities, copynums):
   maxdensity_copynums = copynum_densities.idxmax()
-  likeliest_copynum_ub_idxs = compute_likeliest_copynum_indices(maxdensity_copynums)
-  likeliest_copynums = compute_likeliest_copynums(maxdensity_copynums, likeliest_copynum_ub_idxs)
-  likeliest_copynum_ubs = copynum_densities.columns[likeliest_copynum_ub_idxs]
-  return(assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynums))
+  likeliest_copynum_bd_idxs = compute_likeliest_copynum_indices(maxdensity_copynums)
+  likeliest_copynums = compute_likeliest_copynums(maxdensity_copynums, likeliest_copynum_bd_idxs)
+  likeliest_copynum_bds = copynum_densities.columns[likeliest_copynum_bd_idxs]
+  return assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_bds[1:], copynums)
 
 def wide_to_long_from_listcol(df, variable_colname):
   obs_counts = [len(x) for x in chain.from_iterable(df[variable_colname])]

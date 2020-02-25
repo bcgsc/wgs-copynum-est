@@ -57,9 +57,9 @@ cvg_frequencies.loc[0, ub0:] = 0
 maxdensity_cpnums = cvg_frequencies.loc[:, :ub0].idxmax()
 likeliest_cpnum_ub_idxs = utils.compute_likeliest_copynum_indices(maxdensity_cpnums)
 likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
-zero_to_next = ((likeliest_cpnums[:-1] == 0).values & (likeliest_cpnums[1:] == copynum_assnmts[0]).values)
+zero_to_next = ((likeliest_cpnums[:-1] == 0) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
 if (np.argwhere(zero_to_next).size == 0) and (likeliest_cpnums[0] == 0):
-    zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]).values & (likeliest_cpnums[1:] == copynum_assnmts[0]).values)
+    zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
 if np.argwhere(zero_to_next).size:
     boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(zero_to_next)[0][0]]]
     copynum_lbs[0], copynum_ubs[0], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
@@ -75,9 +75,9 @@ if args.max_cpnum_3:
   the_rest[the_rest == 0] = 3
   likeliest_cpnum_ub_idxs = utils.compute_likeliest_copynum_indices(maxdensity_cpnums)
   likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
-  prev_to_three = ((likeliest_cpnums[:-1] == copynum_assnmts[-1]).values & (likeliest_cpnums[1:] == 3).values)
-  if (np.argwhere(prev_to_three).size == 0) and (3 in likeliest_cpnums.values):
-      prev_to_three = ((likeliest_cpnums[:-1] < copynum_assnmts[-1]).values & (likeliest_cpnums[1:] == copynum_assnmts[0]).values)
+  prev_to_three = ((likeliest_cpnums[:-1] == copynum_assnmts[-1]) & (likeliest_cpnums[1:] == 3))
+  if (np.argwhere(prev_to_three).size == 0) and (3 in likeliest_cpnums):
+      prev_to_three = ((likeliest_cpnums[:-1] < copynum_assnmts[-1]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
   if np.argwhere(prev_to_three).size:
       boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(prev_to_three)[0][0]]]
       copynum_ubs[copynum_assnmts[-1]], copynum_lbs[3] = boundary, boundary
