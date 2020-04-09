@@ -64,14 +64,19 @@ def get_contig_length_gps(seqs, seqs_len):
       return [seqs]
   lb_idx = len(len_percentiles_uniq) - 1
   while len(seqs[seqs_len < ub]) >= bin_minsize:
-      while len(seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx])]) < bin_minsize:
+      base_gp = seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx])]
+      while len(base_gp) < bin_minsize:
           lb_idx -= 1
-      i = 1
-      base_gp = seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx])].mean_kmer_depth.values
-      while stats.ks_2samp(base_gp, seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx - i])].mean_kmer_depth.values).pvalue > 0.05:
-          i += 1
-          if lb_idx < i:
+          if lb_idx < 0:
               break
+          base_gp = seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx])]
+      i = 1
+      if lb_idx >= i:
+          base_gp = seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx])].mean_kmer_depth.values
+          while stats.ks_2samp(base_gp, seqs[(seqs_len < ub) & (seqs_len >= len_percentiles_uniq[lb_idx - i])].mean_kmer_depth.values).pvalue > 0.05:
+              i += 1
+              if lb_idx < i:
+                  break
       if lb_idx < i:
           lb = -np.inf
       else:
