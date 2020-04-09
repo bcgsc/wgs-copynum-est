@@ -98,7 +98,7 @@ seqs['est_gp'] = 0
 if len(copynum_assnmts) > 1:
     seqs.loc[(seqs.mean_kmer_depth < copynum_lbs[copynum_assnmts[1]]), 'likeliest_copynum'] = copynum_assnmts[0]
 else:
-    seqs.loc['likeliest_copynum'] = copynum_assnmts[0]
+    seqs['likeliest_copynum'] = copynum_assnmts[0]
 for i in range(1, len(copynum_assnmts)):
     depth_condition = (seqs.mean_kmer_depth >= copynum_lbs[copynum_assnmts[i]]) & (seqs.mean_kmer_depth < copynum_ubs[copynum_assnmts[i]])
     seqs.loc[depth_condition, 'likeliest_copynum'] = copynum_assnmts[i]
