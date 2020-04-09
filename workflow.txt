@@ -72,3 +72,12 @@ $ mkdir ntcard/genomescope
 $ cp -r ntcard/hist ntcard/genomescope
 [$ <HOME>/scripts/genomescope/run-genomescope.sh 20 5 40 kmer-freq ../reads/diploid.fastq.bwa.read1.fastq ../reads/diploid.fastq.bwa.read2.fastq 150]
 $ <HOME>/scripts/genomescope/eval-genomescope.sh 80 celegans 2|3 ntcard/hist/kmer-freq ntcard/genomescope/out/converged/k80/ gs-cpnum-results est-cpnum-results
+
+5. Unicycler comparison
+From species-, depth-, k-specific folder, e.g. <HOME>/data/ecoli/datasets/simulations/30x/k60
+$ mkdir unicycler
+Note WTF: "Error: --kmers must be comma-separated odd integers without spaces (example: --kmers 21,31,41)". So for odd k:
+$ unicycler -1 ../reads/haploid.fastq.bwa.read1.fastq -2 ../reads/haploid.fastq.bwa.read2.fastq -o unicycler/ --verbosity 2 --min_fasta_length <k> --keep 3 --spades_path /gsc/btl/linuxbrew/bin/spades.py [--no_correct] --kmers <k> --depth_filter 0.1
+$ cd unicycler
+$ less unicycler.log
+$ nohup <HOME>/scripts/unicycler/compare.sh <k> <last_multiplicity_line> <# of multiplicity lines> eval 1 ../../mutated/Escherichia_coli.mutated.fa &

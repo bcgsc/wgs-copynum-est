@@ -17,6 +17,7 @@ argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy 
 argparser.add_argument('--haploid', action="store_true", help='Dataset comes from haploid rather than diploid genome')
 len_strata_help = 'Process sequences from/using length strata: unspecified (default, used in estimation), o (order of magnitude i.e. 0+, 100+, 1000+, 10000+ bps), k (k-mers only)'
 argparser.add_argument('--use_length_strata', type=str, nargs='?', default='e', help=len_strata_help)
+argparser.add_argument('--collapse_highest_est_cpnums', action="store_true", help="Collapse estimated copy numbers exceeding the estimator's maximum (use case Unicycler)")
 argparser.add_argument("est_output", type=str, help="CSV file listing sequence data and classifications")
 argparser.add_argument("bwa_parse_output", type=str, help="Parsed contig data from BWA reference alignment output SAM file")
 argparser.add_argument("est_len_gp_stats", type=str, nargs='?', help="CSV file listing sequence length groups used in classification, with summary statistics")
@@ -37,7 +38,10 @@ def count_and_write(seqs, filename):
   aln_est = pd.DataFrame(None, index=est_components, columns=cols)
   for i in est_components:
     for j in est_components:
-      seqs_ij = seqs[(((seqs.len_gp_max_cpnum_est >= i) & (seqs.aln_match_count == i)) | ((seqs.len_gp_max_cpnum_est == i) & (seqs.aln_match_count > i))) & (seqs.copynum_est == j)]
+      est_cpnum_condition = (seqs.copynum_est == j)
+      if args.collapse_highest_est_cpnums and (j >= est_components[-1]):
+          est_cpnum_condition = (seqs.copynum_est >= j)
+      seqs_ij = seqs[(((seqs.len_gp_max_cpnum_est >= i) & (seqs.aln_match_count == i)) | ((seqs.len_gp_max_cpnum_est == i) & (seqs.aln_match_count > i))) & est_cpnum_condition]
       aln_est.loc[i, j] = seqs_ij.shape[0]
       if aln_est.loc[i, j] > 0:
         aln_est.loc[i, 'avg_avg_depths_' + str(j)] = seqs_ij.avg_depth.sum() / aln_est.loc[i, j]

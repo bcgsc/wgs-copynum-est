@@ -463,6 +463,7 @@ def write_to_log(log_file, len_gp_idx, minlen, maxlen, maxdepth, depth_max_pctl,
 argparser = argparse.ArgumentParser(description='Estimate genomic copy number for haploid or diploid whole-genome shotgun assembly sequences')
 argparser.add_argument('--haploid', action="store_true", help='Dataset comes from haploid rather than diploid genome')
 argparser.add_argument('--half', action="store_true", help='Include copy number 0.5, i.e. heterozygous single-copy, in sequence classification')
+argparser.add_argument('--per_unitig_mean_depth_given', action="store_true", help='Mean k-mer depth (instead of sum of depths) given for each sequence in unitigs_file')
 argparser.add_argument('unitigs_file', type=str, help='FASTA file listing sequences to be classified')
 argparser.add_argument('kmer_len', type=int, help='Value of k used in assembly that output sequences to be classified')
 argparser.add_argument('output_dir', type=str, help='Directory to which output files should be written')
