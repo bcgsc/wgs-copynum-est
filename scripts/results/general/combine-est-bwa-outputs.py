@@ -98,6 +98,8 @@ if args.use_length_strata != 'k':
   len_gps_count, len_gp_idxs = len(mins), range(len(mins))
   seq_gps = list(map(lambda i: seqs[(seqs.length >= mins[i]) & (seqs.length <= maxs[i])], len_gp_idxs))
   seq_gps_long = list(map(lambda i: seqs_long[(seqs_long.length >= mins[i]) & (seqs_long.length <= maxs[i])], len_gp_idxs))
+  # Don't recall exactly why I decided to do the following instead of e.g. some per-sequence dist/len distribution summary, e.g. mean
+  # Maybe I saw/thought those would be similar across length strata
   edit_dist_sums = list(map(lambda seqs: seqs.edit_dist.sum(), seq_gps_long))
   length_sums = list(map(lambda seqs_gp: seqs_gp.length.sum(), seq_gps))
   dist_len_ratios = list(map(lambda sums: sums[0] / sums[1], zip(edit_dist_sums, length_sums)))
