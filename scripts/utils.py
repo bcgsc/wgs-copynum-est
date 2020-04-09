@@ -105,22 +105,51 @@ def get_cpnums_and_bounds(copynum_densities, copynums):
   likeliest_copynum_bds = copynum_densities.columns[likeliest_copynum_bd_idxs]
   return assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_bds[1:], copynums)
 
-def impute_lowest_cpnum_and_bds(copynum_densities, cpnum, copynum_assnmts, copynum_lbs, copynum_ubs):
+def impute_lowest_cpnum_and_bds(copynum_densities, cpnum, copynum_assnmts, copynum_lbs, copynum_ubs, boundary_max=None):
   ub0 = np.inf
   ubd_copynums = copynum_ubs[copynum_ubs < np.inf]
   if ubd_copynums.shape[0] > 0:
     ub0 = ubd_copynums.iloc[0]
   copynum_densities.loc[cpnum, ub0:] = 0
   maxdensity_cpnums = copynum_densities.loc[:, :ub0].idxmax()
-  likeliest_cpnum_ub_idxs = compute_likeliest_copynum_indices(maxdensity_cpnums)
-  likeliest_cpnums = compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
+  likeliest_cpnum_bd_idxs = compute_likeliest_copynum_indices(maxdensity_cpnums)
+  likeliest_cpnums = compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_bd_idxs)
   zero_to_next = ((likeliest_cpnums[:-1] == cpnum) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
   if (np.argwhere(zero_to_next).size == 0) and (likeliest_cpnums[0] == cpnum):
     zero_to_next = ((likeliest_cpnums[:-1] > copynum_assnmts[0]) & (likeliest_cpnums[1:] == copynum_assnmts[0]))
   if np.argwhere(zero_to_next).size:
-    boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(zero_to_next)[0][0]]]
+    boundary = maxdensity_cpnums.index[likeliest_cpnum_bd_idxs[np.argwhere(zero_to_next)[0][0] + 1]]
+    if boundary_max is not None:
+        boundary = min(boundary_max, boundary)
     copynum_lbs[cpnum], copynum_ubs[cpnum], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
+    copynum_densities.loc[cpnum, boundary:] = 0
     copynum_assnmts.insert(0, cpnum)
+
+def impute_highest_cpnum_and_bds(copynum_densities, cpnum, copynum_assnmts, copynum_lbs, copynum_ubs, boundary_min=None):
+  lb_max = 0
+  lbd_cpnums = copynum_lbs[copynum_lbs < np.inf]
+  if lbd_cpnums.shape[0] > 0:
+      lb_max = lbd_cpnums.iloc[-1]
+  copynum_densities.loc[cpnum, :lb_max] = 0
+  maxdensity_cpnums = copynum_densities.loc[:, lb_max:].idxmax()
+  max_idxs = maxdensity_cpnums.index[maxdensity_cpnums == cpnum]
+  if max_idxs.size > 0:
+    the_rest = maxdensity_cpnums[max_idxs[0]:]
+    the_rest[the_rest == copynum_densities.index[0]] = cpnum  # Pandas seems to default to smallest label in case of ties
+  likeliest_cpnum_bd_idxs = compute_likeliest_copynum_indices(maxdensity_cpnums)
+  likeliest_cpnums = compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_bd_idxs)
+  prev_to_max = ((likeliest_cpnums[:-1] == copynum_assnmts[-1]) & (likeliest_cpnums[1:] == cpnum))
+  if (np.argwhere(prev_to_max).size == 0) and (cpnum in likeliest_cpnums):
+      prev_to_max = ((likeliest_cpnums[:-1] == copynum_assnmts[-1]) & (likeliest_cpnums[1:] < copynum_assnmts[-1]))
+  if np.argwhere(prev_to_max).size:
+      boundary = maxdensity_cpnums.index[likeliest_cpnum_bd_idxs[np.argwhere(prev_to_max)[0][0] + 1]]
+      if boundary_min is not None:
+        boundary = max(boundary_min, boundary)
+      tmp = np.argwhere(prev_to_max)[0][0]
+      offset = copynum_densities.loc[cpnum, :lb_max].shape[0]
+      copynum_ubs[copynum_assnmts[-1]], copynum_lbs[cpnum*1.0] = boundary, boundary
+      copynum_ubs[cpnum*1.0] = np.inf
+      copynum_assnmts.append(cpnum)
 
 def wide_to_long_from_listcol(df, variable_colname):
   obs_counts = [len(x) for x in chain.from_iterable(df[variable_colname])]

@@ -46,31 +46,22 @@ p = 1 / (1 + bias)
 copynums = [0, 0.5, 1, 2, 3]
 cvg_frequencies = pd.DataFrame(0, index=copynums, columns=hist.index)
 k = 1.0
-cvg_frequencies.loc[0.5] = hist.index.map(lambda k: ((2 * (1-d) * (1 - (1-r)**k)) + (2 * d * (1 - (1-r)**k) ** 2) + (2 * d * ((1-r)**k) * (1 - (1-r)**k))) * stats.nbinom.pmf(k, n, p) * length)
+half_wt = ((2 * (1-d) * (1 - (1-r)**k)) + (2 * d * (1 - (1-r)**k) ** 2) + (2 * d * ((1-r)**k) * (1 - (1-r)**k)))
+cvg_frequencies.loc[0.5] = hist.index.map(lambda k: half_wt * stats.nbinom.pmf(k, n, p) * length)
 cvg_frequencies.loc[1] = hist.index.map(lambda k: (((1-d) * (1-r)**k) + (d * (1 - (1-r)**k) ** 2)) * stats.nbinom.pmf(k, 2*n, p) * length)
+wt2 = (2 * d * ((1-r)**k) * (1 - (1-r)**k)) + (d * (1-r)**(2*k))
 cvg_frequencies.loc[2] = hist.index.map(lambda k: ((2 * d * ((1-r)**k) * (1 - (1-r)**k)) * stats.nbinom.pmf(k, 3*n, p) + (d * (1-r)**(2*k)) * stats.nbinom.pmf(k, 4*n, p)) * length)
 
 copynum_assnmts, copynum_lbs, copynum_ubs = utils.get_cpnums_and_bounds(cvg_frequencies, copynums)
 cvg_frequencies.loc[0] = hist.freq - cvg_frequencies.loc[0.5:].sum()
-utils.impute_lowest_cpnum_and_bds(cvg_frequencies, 0, copynum_assnmts, copynum_lbs, copynum_ubs)
+utils.impute_lowest_cpnum_and_bds(cvg_frequencies, 0, copynum_assnmts, copynum_lbs, copynum_ubs,
+    stats.nbinom.mean(n, p) - stats.nbinom.std(n, p) - half_wt)
 
 if args.max_cpnum_3:
-  lb3 = copynum_lbs[copynum_lbs < np.inf].iloc[-1]
   cvg_frequencies.loc[3] = hist.freq - cvg_frequencies.loc[0.5:2].sum()
-  cvg_frequencies.loc[3, :lb3] = 0
-  maxdensity_cpnums = cvg_frequencies.loc[:, lb3:].idxmax()
-  first_3_idx = maxdensity_cpnums.index[maxdensity_cpnums == 3][0]
-  the_rest = maxdensity_cpnums[first_3_idx:]
-  the_rest[the_rest == 0] = 3
-  likeliest_cpnum_ub_idxs = utils.compute_likeliest_copynum_indices(maxdensity_cpnums)
-  likeliest_cpnums = utils.compute_likeliest_copynums(maxdensity_cpnums, likeliest_cpnum_ub_idxs)
-  prev_to_three = ((likeliest_cpnums[:-1] == copynum_assnmts[-1]) & (likeliest_cpnums[1:] == 3))
-  if (np.argwhere(prev_to_three).size == 0) and (3 in likeliest_cpnums):
-      prev_to_three = ((likeliest_cpnums[:-1] < copynum_assnmts[-1]) & (likeliest_cpnums[1:] == copynum_assnmts[-1]))
-  if np.argwhere(prev_to_three).size:
-      boundary = maxdensity_cpnums.index[likeliest_cpnum_ub_idxs[np.argwhere(prev_to_three)[0][0]]]
-      copynum_ubs[copynum_assnmts[-1]], copynum_lbs[3] = boundary, boundary
-      copynum_assnmts.append(3)
+  # Assume copy #s 1.5 and 2 uncorrelated for simplicity
+  utils.impute_highest_cpnum_and_bds(cvg_frequencies, 3, copynum_assnmts, copynum_lbs, copynum_ubs,
+      stats.nbinom.mean(3*n, p) + stats.nbinom.mean(4*n, p) + 2 * (stats.nbinom.var(3*n, p) + stats.nbinom.var(4*n, p)) ** 0.5 + wt2)
 
 seq_IDs = array.array('L')
 seq_lens = array.array('L')

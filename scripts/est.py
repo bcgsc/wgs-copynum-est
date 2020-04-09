@@ -614,11 +614,25 @@ for longest_seqs_mode1_copynum in ([0.5] * int(not(haploid_or_trivial)) + [1.0])
                     copynum_densities.loc[cpnum] = copynum_densities.loc[cpnum].apply(lambda x: compute_density_at(x, prefix, result.params))
 
         copynum_assnmts, copynum_lbs, copynum_ubs = utils.get_cpnums_and_bounds(copynum_densities, copynums)
-        if 'exp_' not in copynum_component_prefixes:
-            copynum_densities.loc[0] = depths_grid
-            copynum_densities.loc[0] = copynum_densities.loc[0].apply(lambda x: get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density))
-            copynum_densities.loc[0] = copynum_densities.loc[0] - copynum_densities.iloc[1:].sum()
-            utils.impute_lowest_cpnum_and_bds(copynum_densities, 0, copynum_assnmts, copynum_lbs, copynum_ubs)
+        if (smallest_copynum == 1) or ('exp_' not in copynum_component_prefixes):
+            imputed = zero_or_imputed
+            copynum_densities.loc[imputed] = depths_grid
+            copynum_densities.loc[imputed] = copynum_densities.loc[imputed].apply(lambda x: get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density))
+            copynum_densities.loc[imputed] = copynum_densities.loc[imputed] - copynum_densities.iloc[1:].sum()
+            next_cpnum_wt, next_cpnum_mean, next_cpnum_sigma = get_component_params(smallest_copynum_prefix, result.params)[:3]
+            # Heuristic to take into account component weight in estimating reasonable boundary location
+            utils.impute_lowest_cpnum_and_bds(copynum_densities, imputed, copynum_assnmts, copynum_lbs, copynum_ubs, next_cpnum_mean - 2*next_cpnum_sigma - next_cpnum_wt)
+
+        if max_copynum_est < 2:
+            imputed = int(max_copynum_est + 1)
+            copynum_densities.loc[imputed] = depths_grid
+            copynum_densities.loc[imputed] = copynum_densities.loc[imputed].apply(lambda x: get_density_for_idx(val_to_grid_idx(x, kde_grid_density, grid_min), density))
+            copynum_densities.loc[imputed] = copynum_densities.loc[imputed] - copynum_densities.loc[smallest_copynum:max_copynum_est].sum()
+            max_copynum_prefix = get_component_prefix(max_copynum_est, copynum_component_prefixes)
+            prev_cpnum_wt, prev_cpnum_mean, prev_cpnum_sigma = get_component_params(max_copynum_prefix, result.params)[:3]
+            utils.impute_highest_cpnum_and_bds(copynum_densities, imputed, copynum_assnmts, copynum_lbs, copynum_ubs,
+                prev_cpnum_mean + 2 * prev_cpnum_sigma + prev_cpnum_wt)
+            len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = imputed
 
         # Assign to sequences in the corresponding ranges
         gp_len_condition = (seqs.len >= curr_len_gp_stats.min_len) & (seqs.len <= curr_len_gp_stats.max_len)
