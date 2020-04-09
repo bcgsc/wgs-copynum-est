@@ -1,9 +1,11 @@
 # utils module
 
+import array
 from itertools import chain
 import math as m
 import numpy as np
 import pandas as pd
+import re
 from scipy import stats
 
 
@@ -13,6 +15,38 @@ def compute_gc_content(seq):
     if b == 'G' or b == 'C':
       gc_count += 1
   return (gc_count * 100 / len(seq))
+
+def seqs_from_abyss_contigs(unitigs_file, compute_mean_depth=False, k=None):
+  seq_IDs = array.array('L')
+  seq_lens = array.array('L')
+  seq_mean_kmer_depths = array.array('d')
+  seq_gc_contents = array.array('d')
+  unitigs = open(unitigs_file)
+  line = unitigs.readline()
+  while line:
+      if re.search('^>[0-9]', line):
+          row = line[1:].split()
+          seq_IDs.append(int(row[0]))
+          row[1], row[2] = int(row[1]), float(row[2])
+          seq_lens.append(row[1])
+          if compute_mean_depth:
+              kmers = row[1] - k + 1
+              seq_mean_kmer_depths.append(row[2] / kmers)
+          else:
+              seq_mean_kmer_depths.append(row[2])
+      else:
+          seq_gc_contents.append(compute_gc_content(line))
+      line = unitigs.readline()
+  numseqs = len(seq_mean_kmer_depths)
+  seqs = pd.DataFrame(index=range(numseqs), columns=['ID', 'length', 'mean_kmer_depth', 'modex', 'gc', 'est_gp', 'likeliest_copynum'])
+  seqs['ID'] = seq_IDs
+  seqs['length'] = seq_lens
+  seqs['mean_kmer_depth'] = seq_mean_kmer_depths
+  seqs['gc'] = seq_gc_contents
+  seqs['est_gp'] = -1
+  seqs['likeliest_copynum'] = -1.0
+  seqs.set_index('ID', inplace=True)
+  return seqs
 
 def get_contig_len_gp_min_quantile_size(lengp_minsize, numseqs, min_quantile = 0.0025):
   quantile = max(lengp_minsize/numseqs, min_quantile) * 100

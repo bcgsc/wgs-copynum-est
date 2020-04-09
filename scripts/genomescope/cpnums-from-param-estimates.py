@@ -1,4 +1,3 @@
-import array
 import argparse
 import os
 import numpy as np
@@ -63,33 +62,7 @@ if args.max_cpnum_3:
   utils.impute_highest_cpnum_and_bds(cvg_frequencies, 3, copynum_assnmts, copynum_lbs, copynum_ubs,
       stats.nbinom.mean(3*n, p) + stats.nbinom.mean(4*n, p) + 2 * (stats.nbinom.var(3*n, p) + stats.nbinom.var(4*n, p)) ** 0.5 + wt2)
 
-seq_IDs = array.array('L')
-seq_lens = array.array('L')
-seq_mean_kmer_depths = array.array('d')
-seq_gc_contents = array.array('d')
-
-with open(args.unitigs_file) as unitigs:
-    line = unitigs.readline()
-    while line:
-        if re.search('^>[0-9]', line):
-            row = list(map(int, line[1:].split()))
-            seq_IDs.append(row[0])
-            seq_lens.append(row[1])
-            kmers = row[1] - args.kmer_len + 1
-            seq_mean_kmer_depths.append(row[2] / kmers)
-        else:
-            seq_gc_contents.append(utils.compute_gc_content(line))
-        line = unitigs.readline()
-
-numseqs = len(seq_mean_kmer_depths)
-seqs = pd.DataFrame(columns=['ID', 'length', 'mean_kmer_depth', 'modex', 'gc', 'est_gp', 'likeliest_copynum'])
-seqs['ID'] = seq_IDs
-seqs['length'] = seq_lens
-seqs['mean_kmer_depth'] = seq_mean_kmer_depths
-seqs['gc'] = seq_gc_contents
-seqs['est_gp'] = -1
-seqs['likeliest_copynum'] = -1.0
-seqs.set_index('ID', inplace=True)
+seqs = utils.seqs_from_abyss_contigs(args.unitigs_file, args.kmer_len)
 seqs.sort_values(by=['length', 'mean_kmer_depth'], inplace=True)
 seqs = seqs.loc[seqs.length == args.kmer_len]
 
