@@ -208,11 +208,12 @@ def init_gaussians(components, component_weights, copynum_components, params, pa
             params.update(model.make_params())
             if j == smallest_copynum:
                 params[model.prefix + 'center'].set(value = mode * smallest_copynum, min = mode_min * smallest_copynum, max = mode_max * smallest_copynum)
-                params[model.prefix + 'sigma'].set(value = sigma * smallest_copynum, min = sigma_min * smallest_copynum, max = (depths[-1] - depths[0]) or 1)
+                sqrt_cpnum = m.sqrt(smallest_copynum)
+                params[model.prefix + 'sigma'].set(value = sigma * sqrt_cpnum, min = sigma_min * sqrt_cpnum, max = (depths[-1] - depths[0]) or 1)
                 smallest_prefix = model.prefix
             else:
                 params[model.prefix + 'center'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'center')
-                params[model.prefix + 'sigma'].set(vary = False, expr = str(j / smallest_copynum) + ' * ' + smallest_prefix + 'sigma')
+                params[model.prefix + 'sigma'].set(vary = False, expr = str(m.sqrt(j / smallest_copynum)) + ' * ' + smallest_prefix + 'sigma')
             if re.search(r'^cgauss', model.prefix):
                 diffval = component_weights[j] - component_weights[(j-1) or 0.5]
                 idx = (max(components.keys()) - 1) or 0.5 # should always be >= 1 if haploid
@@ -400,7 +401,7 @@ def set_mode(mode_val, mode_error, smallest_copynum):
 
 def set_sigma_min(sigma_result, smallest_copynum, mode_error):
     sigma_err = sigma_result.stderr or 0
-    sigma_min = (sigma_result.value - sigma_err) / smallest_copynum
+    sigma_min = (sigma_result.value - sigma_err) / m.sqrt(smallest_copynum)
     if sigma_err == 0:
         return ((1 - mode_error) * sigma_min)
     return sigma_min
