@@ -19,7 +19,7 @@ if os.getenv('WGS_COPYNUM_EST_HOME'):
 else:
   raise RuntimeError('Please set environment variable WGS_COPYNUM_EST_HOME before running script')
 
-import utils
+import utils.utils as utils
 
 
 def val_to_grid_idx(val, grid_density, minval):

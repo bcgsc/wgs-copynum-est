@@ -11,7 +11,7 @@ if os.getenv('WGS_COPYNUM_EST_HOME'):
 else:
   raise RuntimeError('Please set environment variable WGS_COPYNUM_EST_HOME before running script')
 
-import utils
+import utils.utils as utils
 
 argparser = argparse.ArgumentParser(description="Combine BWA alignment and copy number estimator outputs for classified sequences")
 argparser.add_argument('--haploid', action="store_true", help='Dataset comes from haploid rather than diploid genome')
