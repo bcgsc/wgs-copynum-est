@@ -323,8 +323,7 @@ def finalise_and_fit(components, copynum_components, params, haploid, smallest_c
     return fit(depths, mixture_model, params)
 
 def setup_and_fit(depths, density, grid_min, kde_grid_density, min_density_depth_idx1, param_guesses, len_group_mode, mode_error, haploid, est_half):
-    mode, mode_min, mode_max = param_guesses['mode'], param_guesses['mode_min'], param_guesses['mode_max']
-    sigma, sigma_min = param_guesses['sigma'], param_guesses['sigma_min']
+    mode, sigma = param_guesses['mode'], param_guesses['sigma']
     density_ECDF = ECDF(depths)
     density_at_modes, cdf_at_modes = setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min,
         kde_grid_density, min_density_depth_idx1, density_ECDF, haploid)
