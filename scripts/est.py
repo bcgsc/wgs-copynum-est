@@ -572,9 +572,7 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
         sigma_min = set_sigma_min(result.params[smallest_copynum_prefix + 'sigma'], smallest_copynum, mode_error)
         length_gp_sigmas[len_gp_idx] = result.params[smallest_copynum_prefix + 'sigma'].value / smallest_copynum
 
-        # The next 3 lines could in principle be written differently and more succinctly, but not in practice (at least without some other changes).
-        # I don't quite recall why they are necessary (without some effort), but they are.
-        zero_or_imputed = smallest_copynum - 0.5 - 0.5 * args.haploid
+        zero_or_imputed = smallest_copynum - 0.5 - 0.5 * args.haploid # Assumes smallest_copynum <= 1
         copynums = [zero_or_imputed, smallest_copynum]
         if max_copynum_est > 0.5:
             copynums = copynums + list(range(m.floor(smallest_copynum + 1), max_copynum_est + 1))
