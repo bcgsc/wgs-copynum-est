@@ -565,8 +565,6 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
         smallest_copynum = get_smallest_copynum(copynum_component_prefixes)
         # Safe to use because error thrown whenever smallest copynum > 1, so first clause should always evaluate to > 0 for haploid genomes
         max_copynum_est = (len(copynum_component_prefixes) - int('exp_' in copynum_component_prefixes) - int(smallest_copynum == 0.5)) or 0.5
-        len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
-        len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = max_copynum_est
 
         smallest_copynum_prefix = set_smallest_copynum_prefix(smallest_copynum, copynum_component_prefixes)
         if mode_max == np.inf:
@@ -581,15 +579,34 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
         if max_copynum_est > 0.5:
             copynums = copynums + list(range(m.floor(smallest_copynum + 1), max_copynum_est + 1))
         depths_grid = np.unique(np.concatenate((np.arange(grid_min + offset, depths[0], 0.02), np.array(depths))))
-        copynum_densities = pd.DataFrame(0.0, index = copynums, columns = depths_grid)
+        copynum_densities = pd.DataFrame(0.0, index = copynums, columns = depths_grid) # Density 0 needed for copy numbers not fitted
+        cpnum_prefixes = pd.Series(dtype='object', index=copynums)
         for cpnum in copynums:
-            if (cpnum == 0) or (cpnum >= smallest_copynum): # I don't quite recall why this is necessary (without some effort), but it is (redux)
-                if (cpnum > 0) or ('exp_' in copynum_component_prefixes):
-                    copynum_densities.loc[cpnum] = depths_grid
-                    prefix = get_component_prefix(cpnum, copynum_component_prefixes)
-                    copynum_densities.loc[cpnum] = copynum_densities.loc[cpnum].apply(lambda x: compute_density_at(x, prefix, result.params))
+            if ((cpnum == 0) and ('exp_' in copynum_component_prefixes)) or (cpnum >= smallest_copynum):
+                copynum_densities.loc[cpnum] = depths_grid
+                cpnum_prefixes[cpnum] = get_component_prefix(cpnum, copynum_component_prefixes)
+                copynum_densities.loc[cpnum] = copynum_densities.loc[cpnum].apply(lambda x: compute_density_at(x, cpnum_prefixes[cpnum], result.params))
 
         copynum_assnmts, copynum_lbs, copynum_ubs = utils.get_cpnums_and_bounds(copynum_densities, copynums)
+        cn2 = next((cpnum for cpnum in copynums if cpnum > 1), None)
+        if cn2:
+            for cpnum in range(cn2, copynums[-1]):
+                bd = copynum_ubs[cpnum]
+                wt1, mean1, sigma1 = get_component_params(cpnum_prefixes[cpnum], result.params)[:3]
+                wt2, mean2, sigma2 = get_component_params(cpnum_prefixes[cpnum+1], result.params)[:3]
+                misclassified1, misclassified2 = stats.norm.sf(copynum_ubs[cpnum], mean1, sigma1), stats.norm.cdf(copynum_ubs[cpnum], mean2, sigma2)
+                #if ((misclassified1 > 0.25) or (misclassified2 > 0.25)) and (cpnum + 1 < copynums[-1]):
+                if (misclassified1 > 0.2) or (misclassified2 > 0.2):
+                    copynum_densities.loc[cpnum, :] = copynum_densities.loc[cpnum:].sum()
+                    copynum_densities = copynum_densities.loc[:cpnum]
+                    max_copynum_est = cpnum
+                    copynums = [zero_or_imputed, smallest_copynum] + list(range(m.floor(smallest_copynum + 1), max_copynum_est + 1))
+                    copynum_assnmts, copynum_lbs, copynum_ubs = utils.get_cpnums_and_bounds(copynum_densities, copynums)
+                    break
+
+        len_gp_stats[-1].loc[len_gp_idx, 'min_copynum'] = smallest_copynum
+        len_gp_stats[-1].loc[len_gp_idx, 'max_copynum_est'] = max_copynum_est
+
         if (smallest_copynum == 1) or ('exp_' not in copynum_component_prefixes):
             imputed = zero_or_imputed
             copynum_densities.loc[imputed] = depths_grid
