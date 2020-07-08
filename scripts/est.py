@@ -69,7 +69,7 @@ def get_density_for_idx(idx, density):
     return (density[m.floor(idx)] + (idx - m.floor(idx)) * (density[m.ceil(idx)] - density[m.floor(idx)]))
 
 # Assumes that density increases in some ranges between min. depth and 0.5 * mode through mode: o/w, density at both mode and half-mode should be * 0.5
-def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, min_density_depth_idx1, density_ECDF, haploid):
+def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, min_density_depth_idx1, depth_ECDF, haploid):
     density_at_modes, cdf_at_modes = { 0.0: 0 }, { 0.0: 0 }
     density_1 = int(mode < depths[-1]) and get_density_for_idx(val_to_grid_idx(mode, kde_grid_density, grid_min), density)
     if haploid:
@@ -87,25 +87,25 @@ def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_mi
         x = min_density_depth_idx1
         if x >= 0.5 * mode:
             x = 0
-        density_at_modes[0.0], cdf_at_modes[0.0] = get_density_for_idx(x, density), density_ECDF([grid_idx_to_val(x, kde_grid_density, grid_min)])[0]
+        density_at_modes[0.0], cdf_at_modes[0.0] = get_density_for_idx(x, density), depth_ECDF([grid_idx_to_val(x, kde_grid_density, grid_min)])[0]
     # The better defined or more separated (smaller mode_pt5to1_mindens / peak_density) the densities around mode and 0.5mode,
     # the less the apparent density of the lower-weight component is discounted
     if not(haploid):
         if depths[0] <= 0.5 * mode:
             factor = ((mode < depths[-1]) and (peak_copynum == 1) and min(1, 0.5 + 1 - min(1, mode_pt5to1_mindens / density_pt5))) or 1
-            density_at_modes[0.5], cdf_at_modes[0.5] = density_pt5 * factor, density_ECDF([0.5 * mode])[0]
+            density_at_modes[0.5], cdf_at_modes[0.5] = density_pt5 * factor, depth_ECDF([0.5 * mode])[0]
     if mode < depths[-1]:
         factor = ((depths[0] <= 0.5 * mode) and (peak_copynum == 0.5) and min(1, 0.5 + 1 - min(1, mode_pt5to1_mindens / density_1))) or 1
-        density_at_modes[1.0], cdf_at_modes[1.0] = density_1 * factor, density_ECDF([mode])[0]
+        density_at_modes[1.0], cdf_at_modes[1.0] = density_1 * factor, depth_ECDF([mode])[0]
     if 1 not in density_at_modes.keys():
         if haploid or density_at_modes[0.5] == 0:
             raise RuntimeError
     # min(x1, x2): see notes with illustration
     i, modes_in_depths = 2.0, round(depths[-1] * 1.0 / mode)
-    for i in np.arange(2.0, min(round((len_group_mode * 1.0 / mode) + 2.5), modes_in_depths + 1.0 - int(density_ECDF([(modes_in_depths - 0.5) * mode])[0] > 0.99))):
+    for i in np.arange(2.0, min(round((len_group_mode * 1.0 / mode) + 2.5), modes_in_depths + 1.0 - int(depth_ECDF([(modes_in_depths - 0.5) * mode])[0] > 0.99))):
         if i * mode <= depths[-1]:
             density_at_modes[i] = get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density)
-            cdf_at_modes[i] = density_ECDF([i * mode])[0]
+            cdf_at_modes[i] = depth_ECDF([i * mode])[0]
     return (density_at_modes, cdf_at_modes)
 
 def get_gamma_min_density_ratio(copynums_in_90thpctl_mode_diff):
@@ -325,9 +325,9 @@ def finalise_and_fit(components, copynum_components, params, haploid, smallest_c
 
 def setup_and_fit(depths, density, grid_min, kde_grid_density, min_density_depth_idx1, param_guesses, len_group_mode, mode_error, haploid, est_half):
     mode, sigma = param_guesses['mode'], param_guesses['sigma']
-    density_ECDF = ECDF(depths)
+    depth_ECDF = ECDF(depths)
     density_at_modes, cdf_at_modes = setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min,
-        kde_grid_density, min_density_depth_idx1, density_ECDF, haploid)
+        kde_grid_density, min_density_depth_idx1, depth_ECDF, haploid)
     i, use_gamma = (len(density_at_modes) - 2) or 0.5, False
     if haploid:
         i = len(density_at_modes) - 1
@@ -343,23 +343,23 @@ def setup_and_fit(depths, density, grid_min, kde_grid_density, min_density_depth
                 use_gamma, i = True, i - 1
                 break
             density_at_modes[i] = get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density)
-            cdf_at_modes[i] = density_ECDF([i * mode])[0]
+            cdf_at_modes[i] = depth_ECDF([i * mode])[0]
             density_ratio = density_at_modes[i] / density_at_modes[i-1]
     lb = max(i - 1, 0) # i = 0 possible in principle for haploid genome
     if vary_copynum:
         lb = i - 2
         if use_gamma and (lb < 1):
             lb = 1
-        if ((i + 1) * mode <= depths[-1]) and (density_ECDF([(i + 1) * mode])[0] < 0.99):
+        if ((i + 1) * mode <= depths[-1]) and (depth_ECDF([(i + 1) * mode])[0] < 0.99):
             i += 1
             density_at_modes[i] = get_density_for_idx(val_to_grid_idx(i * mode, kde_grid_density, grid_min), density)
-            cdf_at_modes[i] = density_ECDF([i * mode])[0]
+            cdf_at_modes[i] = depth_ECDF([i * mode])[0]
     density_at_modes, cdf_at_modes = pd.Series(density_at_modes), pd.Series(cdf_at_modes)
     len_gp_mode_copynum_ub = get_mode_copynum_ub(len_group_mode, mode, haploid, est_half)
     aic = np.inf
     for j in np.arange(i, lb, -1):
         # (i + 1) * mode <= depths[-1] practically guaranteed when gamma used
-        next_mode_cdf = (use_gamma and (((j == i) and density_ECDF([(j + 1) * mode])[0]) or cdf_at_modes[j+1])) or None
+        next_mode_cdf = (use_gamma and (((j == i) and depth_ECDF([(j + 1) * mode])[0]) or cdf_at_modes[j+1])) or None
         component_weights = get_component_weights(density_at_modes[:j], min_density_depth_idx1, haploid, use_gamma, cdf_at_modes[:j], next_mode_cdf)
         smallest_copynum = 1
         if component_weights.iloc[1:][component_weights.iloc[1:] > 0].index[0] == 0.5:
