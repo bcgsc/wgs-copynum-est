@@ -318,8 +318,8 @@ def fit(depths, mixture_model, params):
     else:
         return mixture_model.fit([1], params, x=[depths[0]])
 
-def finalise_and_fit(components, copynum_components, params, haploid, smallest_copynum, len_gp_mode_copynum_ub, use_gamma, depths_size):
-    mixture_model = init_genome_scale_model(params, depths_size) * copynum_components
+def finalise_and_fit(components, copynum_components, params, haploid, smallest_copynum, len_gp_mode_copynum_ub, use_gamma, depths):
+    mixture_model = init_genome_scale_model(params, depths.size) * copynum_components
     params = finalise_params(params, components, haploid, smallest_copynum, len_gp_mode_copynum_ub, use_gamma)
     return fit(depths, mixture_model, params)
 
@@ -372,7 +372,7 @@ def setup_and_fit(depths, density, grid_min, kde_grid_density, min_density_depth
         if use_gamma:
             components, copynum_components, params = init_gamma(depths, components, copynum_components, params, mode, sigma, mode_error)
         # Finally estimate copy numbers using lmfit
-        result_temp = finalise_and_fit(components, copynum_components, params, haploid, smallest_copynum, len_gp_mode_copynum_ub, use_gamma, depths.size)
+        result_temp = finalise_and_fit(components, copynum_components, params, haploid, smallest_copynum, len_gp_mode_copynum_ub, use_gamma, depths)
         if (result_temp.aic / aic) < 1 + min(0.025, 0.005 * (i - 3)): # slight penalty for higher # of components, increasing with i ("base" #)
             result, aic = result_temp, result_temp.aic
     return result
