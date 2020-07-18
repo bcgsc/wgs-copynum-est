@@ -577,7 +577,7 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
         copynums = [zero_or_imputed, smallest_copynum]
         if max_copynum_est > 0.5:
             copynums = copynums + list(range(m.floor(smallest_copynum + 1), max_copynum_est + 1))
-        depths_grid = np.unique(np.concatenate((np.arange(grid_min + offset, depths[0], 0.02), np.array(depths))))
+        depths_grid = np.array(depths)
         copynum_densities = pd.DataFrame(0.0, index = copynums, columns = depths_grid) # Density 0 needed for copy numbers not fitted
         cpnum_prefixes = pd.Series(dtype='object', index=copynums)
         for cpnum in copynums:
