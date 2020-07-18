@@ -531,7 +531,8 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
         # Estimate standard deviation of copy-number 1 sequences
         if variance_from_curve(len_group_mode, mode, longest_seqs_mode1_copynum, mode_error):
             # Perhaps it's a mistake not to enforce that mode1_copynum be <= 2?
-            sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode * 0.25, depths[0])) / (round(len_group_mode / mode) or 0.5)
+            # Post-hoc comment: mode * 0.25 likely used for len_group_mode == mode as well because it might help avoid over-estimating variance
+            sigma = np.std(get_approx_component_obs(depths, len_group_mode, mode * 0.25, depths[0])) / (round(len_group_mode / mode) or m.sqrt(0.5))
         else:
             sigma = guess_next_sigma(length_gp_medians[len_gp_idx], length_gp_medians[(len_gp_idx + 1):], length_gp_sigmas[(len_gp_idx + 1):])
         if sigma < sigma_min:
