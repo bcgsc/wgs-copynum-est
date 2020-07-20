@@ -71,12 +71,14 @@ def get_density_for_idx(idx, density):
 # Assumes that density increases in some ranges between min. depth and 0.5 * mode through mode: o/w, density at both mode and half-mode should be * 0.5
 def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_min, kde_grid_density, min_density_depth_idx1, depth_ECDF, haploid):
     density_at_modes, cdf_at_modes = { 0.0: 0 }, { 0.0: 0 }
-    density_1 = int(mode < depths[-1]) and get_density_for_idx(val_to_grid_idx(mode, kde_grid_density, grid_min), density)
+    mode_grid_idx = int(mode < depths[-1]) and val_to_grid_idx(mode, kde_grid_density, grid_min)
+    density_1 = mode_grid_idx and get_density_for_idx(mode_grid_idx, density)
     if haploid:
         peak_copynum = 1
     else:
         density_at_modes[0.5], cdf_at_modes[0.5] = 0, 0
-        density_pt5 = int(depths[0] <= 0.5 * mode) and get_density_for_idx(val_to_grid_idx(0.5 * mode, kde_grid_density, grid_min), density)
+        modept5_grid_idx = int(depths[0] <= 0.5 * mode) and val_to_grid_idx(0.5 * mode, kde_grid_density, grid_min)
+        density_pt5 = modept5_grid_idx and get_density_for_idx(modept5_grid_idx, density)
         if (depths[0] <= 0.5 * mode) and (mode < depths[-1]):
             peak_copynum = int(density_pt5 < density_1) # 0 if density_pt5 == density_1
             if density_pt5 > density_1:
