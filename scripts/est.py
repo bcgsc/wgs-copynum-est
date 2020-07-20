@@ -83,8 +83,7 @@ def setup_mode_densities_and_cdfs(mode, len_group_mode, depths, density, grid_mi
             peak_copynum = int(density_pt5 < density_1) # 0 if density_pt5 == density_1
             if density_pt5 > density_1:
                 peak_copynum = 0.5
-            modept5_idx_flr = m.floor(val_to_grid_idx(0.5 * mode, kde_grid_density, grid_min))
-            mode_pt5to1_mindens = np.min(density[modept5_idx_flr:(modept5_idx_flr+1)])
+            mode_pt5to1_mindens = np.min(density[m.floor(modept5_grid_idx):(m.floor(mode_grid_idx)+1)])
     if depths[0] <= 0.75 * 0.5 * mode:
         x = min_density_depth_idx1
         if x >= 0.5 * mode:
