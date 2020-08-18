@@ -182,8 +182,12 @@ def plot_aln_kdes_with_est_bds(kde_grid, cpnums, aln_kdes_normed, est_cpnum_data
             idx = m.ceil(c)
         if aln_kdes_normed[c] is not None:
             ax.plot(kde_grid, aln_kdes_normed[c], color = COLOURS[idx], lw = 1, label = 'True copy # ' + str(c))
-        if i > 0:
-            plt.axvline(x = est_cpnum_data[est_cpnum_data.copynum == c].depth_min.iloc[0], color = COLOURS[idx], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(c) + ' lower bound')
+        cpnum_metadata = est_cpnum_data[est_cpnum_data.copynum == c]
+        if len(cpnum_metadata) > 0:
+            plt.axvline(x = cpnum_metadata.depth_min.iloc[0], color = COLOURS[idx], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(c) + ' lower bound')
+    if len(cpnum_metadata) == 0:
+        cpnum_metadata = est_cpnum_data[est_cpnum_data.copynum == cpnums[i-1]]
+        plt.axvline(x = cpnum_metadata.depth_ub.iloc[0], color = COLOURS[idx], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(cpnums[i-1]+1) + ' lower bound')
     ax.plot(kde_grid, get_whole_sample_kde(depths).evaluate(kde_grid), 'k', lw = 1, label = "All sequences")
     finalise_figure(ax, fig, 'Densities for estimated and true copy numbers, sequences ' + title_suffix, filename_prefix)
 
@@ -250,7 +254,7 @@ HALF = ((all_seqs.likeliest_copynum == 0.5).sum() > 0)
 MAX_INT_COPYNUM = 8 + int(not(HALF))
 COLOURS = [ 'xkcd:azure', 'xkcd:coral', 'xkcd:darkgreen', 'xkcd:gold', 'xkcd:plum', 'xkcd:darkblue', 'xkcd:olive', 'xkcd:magenta', 'xkcd:chocolate', 'xkcd:yellowgreen' ]
 
-smallest_cpnum = all_components.loc[all_components.depth_min < np.inf].iloc[0]
+smallest_cpnum = all_components.loc[(all_components.copynum > 0) & (all_components.depth_min < np.inf)].iloc[0]
 MODE = smallest_cpnum.cpnum_mean / smallest_cpnum.copynum
 
 lbs, ubs = pd.Series([0, 100, 1000, 10000]), pd.Series([99, 999, 9999, np.Inf])
