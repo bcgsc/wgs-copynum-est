@@ -114,15 +114,15 @@ def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynu
   for i in range(1, len(likeliest_copynums)):
     if likeliest_copynums[i] not in copynums_unique:
       if likeliest_copynums[i] < copynum_assnmts[-1]:
-        reserve_copynum, reserve_bd = copynum_assnmts[-1], copynum_lbs[copynum_assnmts[-1]]
-        copynum_lbs[copynum_assnmts[-1]] = np.inf
+        reserve_copynum, reserve_bd = copynum_assnmts[-1], copynum_lbs.loc[copynum_assnmts[-1]]
+        copynum_lbs.loc[copynum_assnmts[-1]] = np.inf
         copynums_unique.remove(copynum_assnmts[-1])
         copynum_assnmts.pop()
       if len(copynum_assnmts) == 0:
-        copynum_lbs[likeliest_copynums[i]] = 0
+        copynum_lbs.loc[likeliest_copynums[i]] = 0
       else:
-        copynum_lbs[likeliest_copynums[i]] = likeliest_copynum_ubs[i-1]
-        copynum_ubs[copynum_assnmts[-1]] = likeliest_copynum_ubs[i-1]
+        copynum_lbs.loc[likeliest_copynums[i]] = likeliest_copynum_ubs[i-1]
+        copynum_ubs.loc[copynum_assnmts[-1]] = likeliest_copynum_ubs[i-1]
       copynum_assnmts.append(likeliest_copynums[i])
       copynums_unique.add(likeliest_copynums[i])
   # To keep from putting upper bound of penultimate cpnum at intersection between higher copy number and tail of lower copy number.
@@ -130,10 +130,10 @@ def assign_copynums_and_bounds(likeliest_copynums, likeliest_copynum_ubs, copynu
   # (the current order seems likelier to be correct if multiple copy numbers were assigned after the reserve), but
   # this already works as well as or better than omitting it (in like 29/30 cases), and changing it would require a whole bunch more testing
   if len(copynum_assnmts) > 1 and (copynum_assnmts[-1] < reserve_copynum):
-    copynum_lbs[copynum_assnmts[-1]] = np.inf
+    copynum_lbs.loc[copynum_assnmts[-1]] = np.inf
     copynum_assnmts.pop()
-    copynum_lbs[reserve_copynum] = reserve_bd
-    copynum_ubs[copynum_assnmts[-1]] = reserve_bd
+    copynum_lbs.loc[reserve_copynum] = reserve_bd
+    copynum_ubs.loc[copynum_assnmts[-1]] = reserve_bd
     copynum_assnmts.append(reserve_copynum)
   return (copynum_assnmts, copynum_lbs, copynum_ubs)
 
@@ -160,7 +160,7 @@ def impute_lowest_cpnum_and_bds(copynum_densities, cpnum, copynum_assnmts, copyn
     boundary = maxdensity_cpnums.index[likeliest_cpnum_bd_idxs[np.argwhere(zero_to_next)[0][0] + 1]]
     if boundary_max is not None:
         boundary = min(boundary_max, boundary)
-    copynum_lbs[cpnum], copynum_ubs[cpnum], copynum_lbs[copynum_assnmts[0]] = 0, boundary, boundary
+    copynum_lbs.loc[cpnum], copynum_ubs.loc[cpnum], copynum_lbs.loc[copynum_assnmts[0]] = 0, boundary, boundary
     copynum_densities.loc[cpnum, boundary:] = 0
     copynum_assnmts.insert(0, cpnum)
 
@@ -184,10 +184,9 @@ def impute_highest_cpnum_and_bds(copynum_densities, cpnum, copynum_assnmts, copy
       boundary = maxdensity_cpnums.index[likeliest_cpnum_bd_idxs[np.argwhere(prev_to_max)[0][0] + 1]]
       if boundary_min is not None:
         boundary = max(boundary_min, boundary)
-      tmp = np.argwhere(prev_to_max)[0][0]
       offset = copynum_densities.loc[cpnum, :lb_max].shape[0]
-      copynum_ubs[copynum_assnmts[-1]], copynum_lbs[cpnum*1.0] = boundary, boundary
-      copynum_ubs[cpnum*1.0] = np.inf
+      copynum_ubs.loc[copynum_assnmts[-1]], copynum_lbs.loc[cpnum*1.0] = boundary, boundary
+      copynum_ubs.loc[cpnum*1.0] = np.inf
       copynum_assnmts.append(cpnum)
 
 def wide_to_long_from_listcol(df, variable_colname):
