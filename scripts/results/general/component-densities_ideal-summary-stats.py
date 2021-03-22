@@ -22,8 +22,6 @@ argparser.add_argument('est_len_gp_stats', type=str, help='CSV file listing sequ
 argparser.add_argument('copynum_stats_file', type=str, help='CSV file listing estimated copy number component parameters for all length groups')
 argparser.add_argument('plots_folder', type=str, help='Folder name for output plot files')
 argparser.add_argument('plots_file_prefix', type=str, help='Prefix for output plot file names')
-# Use presence of following argument to indicate that best-possible summary figures should be computed and output
-argparser.add_argument('ideal_summary_folder', type=str, nargs='?', default=None, help='Folder name for ideal (best-possible) summary statistics and counts output files')
 args = argparser.parse_args()
 
 
@@ -102,25 +100,10 @@ def get_aln_copynum_bounds(kdes_normed, kde_grid):
             lbs[cpnum_assnmts.iloc[i]] = kde_grid[0]
     return lbs
 
-def compute_ideal_stats(tps, counts_aln, positives):
-    stats = pd.DataFrame(index=tps.index, columns=['tpr', 'fnr', 'ppv', 'fdr', 'f1'])
-    stats['tpr'] = tps / counts_aln
-    stats['fnr'] = 1 - stats.tpr
-    stats['ppv'] = tps / positives
-    stats['fdr'] = 1 - stats.ppv
-    stats['f1'] = 2.0 * tps / (counts_aln + positives)
-    return stats
-
 def get_whole_sample_kde(depths):
     kde_all = sm.nonparametric.KDEUnivariate(depths)
     kde_all.fit(bw='scott')
     return kde_all
-
-def init_lengp_cpnum_ideal_stats_table(lengps_count, cpnums, lengp_min_lens, lengp_max_lens):
-    len_gp_cpnum_table = pd.DataFrame(0, index=range(lengps_count), columns=['minlen', 'maxlen'] + cpnums + ['total'])
-    len_gp_cpnum_table.loc[:(lengps_count - 2), 'minlen'], len_gp_cpnum_table.loc[:(lengps_count - 2), 'maxlen'] = lengp_min_lens, lengp_max_lens
-    len_gp_cpnum_table.loc[lengps_count - 1, 'minlen'], len_gp_cpnum_table.loc[lengps_count - 1, 'maxlen'] = lengp_min_lens.iloc[0], lengp_max_lens.iloc[-1]
-    return len_gp_cpnum_table
 
 def get_seqs_attr_per_cpnum(seqs, attr, cpnums):
     seqs_attr = { c: seqs.loc[getattr(seqs, attr) == c,] for c in cpnums[:-1] }
@@ -191,22 +174,6 @@ def plot_aln_kdes_with_est_bds(kde_grid, cpnums, aln_kdes_normed, est_cpnum_data
     ax.plot(kde_grid, get_whole_sample_kde(depths).evaluate(kde_grid), 'k', lw = 1, label = "All sequences")
     finalise_figure(ax, fig, 'Densities for estimated and true copy numbers, sequences ' + title_suffix, filename_prefix)
 
-def compute_ideal_tps(seqs_aln, lbs):
-    tps = pd.Series(index = lbs.index)
-    for i in range(lbs.size - 1):
-        cp = lbs.index[i]
-        tps[cp] = seqs_aln[cp][(seqs_aln[cp].mean_kmer_depth >= lbs[cp]) & (seqs_aln[cp].mean_kmer_depth < lbs[lbs.index[i+1]])].shape[0]
-    cp, seqs_aln_cpnum = lbs.index[lbs.size - 1], seqs_aln[lbs.index.max()]
-    tps[cp] = seqs_aln_cpnum[seqs_aln_cpnum.mean_kmer_depth >= lbs[cp]].shape[0]
-    return tps
-
-def compute_ideal_positives(seqs, lbs, assigned_cpnums):
-    positives = pd.Series(0, index = lbs.index)
-    for i in range(len(assigned_cpnums) - 1):
-        positives[assigned_cpnums[i]] = seqs[(seqs.mean_kmer_depth >= lbs[assigned_cpnums[i]]) & (seqs.mean_kmer_depth < lbs[assigned_cpnums[i+1]])].shape[0]
-    positives[assigned_cpnums[-1]] = seqs[seqs.mean_kmer_depth >= lbs[assigned_cpnums[-1]]].shape[0]
-    return positives
-
 def write_stats(stats, filepath_prefix, overall):
     stats.to_csv(filepath_prefix + '.csv', index_label='Copy #', header=['TPR', 'FNR', 'PPV', 'FDR', 'F1'])
     csv.writer(open(filepath_prefix + '.csv', 'a')).writerow(['Overall', overall, 1 - overall, '', '', ''])
@@ -219,7 +186,7 @@ def write_counts(counts, rowmax, cpnums_all, filepath_prefix):
 def compute_and_plot_population_densities(components, seqs, mode, title_suffix, filename_prefix):
     est_max = get_max_copynum(seqs.likeliest_copynum)
     depths = get_sorted_depth_vals(seqs.mean_kmer_depth.values)
-    density_grid = get_density_grid(seqs, depths, 0, est_max, 50, mode)
+    density_grid = get_density_grid(seqs, depths, 0, est_max, 100, mode)
     densities = np.zeros([components.shape[0], density_grid.size])
     fig, ax = plt.subplots(figsize = (15, 10))
     for i in range(components.shape[0]):
@@ -231,9 +198,24 @@ def compute_and_plot_population_densities(components, seqs, mode, title_suffix, 
         else:
             densities[i] = components.iloc[i].weight * stats.gamma.pdf(density_grid, components.iloc[i].gamma_shape, components.iloc[i].gamma_loc, components.iloc[i].gamma_scale)
         ax.plot(density_grid, densities[i], color = COLOURS[i], linestyle = '--', lw = 1, label = 'Copy # ' + str(components.iloc[i].copynum) + ' population density')
+        plt.axvline(x = components.iloc[i].depth_min, color = COLOURS[i], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(components.iloc[i].copynum) + ' lower bound')
     ax.plot(density_grid, np.sum(densities, axis=0), 'k', linestyle = '--', lw = 1, label = 'Total population density')
-    ax.plot(density_grid, get_whole_sample_kde(depths).evaluate(density_grid), 'k', lw = 1, label = 'Total sample density')
+    ax.set_xlabel('Mean k-mer read depth', fontsize=12)
+    ax.set_ylabel('Density', fontsize=12)
+    plt.axvline(x = components.iloc[i].depth_ub, color = COLOURS[i], linestyle = '--', lw = 1, label = 'Estimated copy # ' + str(int(components.iloc[i].copynum + 1)) + ' lower bound')
     finalise_figure(ax, fig, 'Population densities for estimated copy number components, sequences ' + title_suffix, filename_prefix)
+    finalise_figure(ax, fig, '', filename_prefix)
+
+if not(args.plot_est_population_densities):
+    est_max_cpnum_all = get_max_copynum(all_seqs.likeliest_copynum)
+    cpnums_all = get_copynums_list(est_max_cpnum_all)
+    seqs_est, seqs_aln = get_seqs_attr_per_cpnum(all_seqs, 'likeliest_copynum', cpnums_all), get_seqs_attr_per_cpnum(all_seqs, 'alns', cpnums_all)
+    est_counts, aln_counts = get_counts(seqs_est), get_counts(seqs_aln)
+    depths = get_sorted_depth_vals(all_seqs.mean_kmer_depth.values)
+    kde_grid = get_density_grid(all_seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum_all, 100, MODE) # can replace 100 by some other density
+    est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
+    aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
+    plot_kdes(kde_grid, cpnums_all, est_kdes_normed, aln_kdes_normed, depths, 'of all lengths', os.path.join(args.plots_folder, args.plots_file_prefix))
 
 
 all_seqs = pd.read_csv(args.seq_est_aln_file)
@@ -258,32 +240,11 @@ smallest_cpnum = all_components.loc[(all_components.copynum > 0) & (all_componen
 MODE = smallest_cpnum.cpnum_mean / smallest_cpnum.copynum
 
 lbs, ubs = pd.Series([0, 100, 1000, 10000]), pd.Series([99, 999, 9999, np.Inf])
+len_gp_stats = pd.read_csv(args.est_len_gp_stats)
 if not(args.use_oom_len_gps):
-    len_gp_stats = pd.read_csv(args.est_len_gp_stats)
     lbs, ubs = len_gp_stats['Min. len.'], len_gp_stats['Max. len.']
 
-if not(args.plot_est_population_densities):
-    est_max_cpnum_all = get_max_copynum(all_seqs.likeliest_copynum)
-    cpnums_all = get_copynums_list(est_max_cpnum_all)
-    seqs_est, seqs_aln = get_seqs_attr_per_cpnum(all_seqs, 'likeliest_copynum', cpnums_all), get_seqs_attr_per_cpnum(all_seqs, 'alns', cpnums_all)
-    est_counts, aln_counts = get_counts(seqs_est), get_counts(seqs_aln)
-    depths = get_sorted_depth_vals(all_seqs.mean_kmer_depth.values)
-    kde_grid = get_density_grid(all_seqs, depths, (1 - MIN_OFFSET_FRACTION) * depths[0], est_max_cpnum_all, 100, MODE) # can replace 100 by some other density
-    est_kdes_normed = get_normalised_kdes(seqs_est, kde_grid, est_counts, len(depths))
-    aln_kdes_normed = get_normalised_kdes(seqs_aln, kde_grid, aln_counts, len(depths))
-    plot_kdes(kde_grid, cpnums_all, est_kdes_normed, aln_kdes_normed, depths, 'of all lengths', os.path.join(args.plots_folder, args.plots_file_prefix))
-    if args.ideal_summary_folder:
-        ideal_summary_stats_folder, ideal_counts_folder = os.path.join(args.ideal_summary_folder, 'stats'), os.path.join(args.ideal_summary_folder, 'counts')
-        if not(os.path.exists(ideal_summary_stats_folder)):
-            os.mkdir(ideal_summary_stats_folder)
-        if not(os.path.exists(ideal_counts_folder)):
-            os.mkdir(ideal_counts_folder)
-        len_gp_cpnum_lbs = pd.DataFrame(np.inf, index=range(len(ubs)), columns=['minlen', 'maxlen'] + cpnums_all)
-        len_gp_cpnum_lbs['minlen'], len_gp_cpnum_lbs['maxlen'] = lbs, ubs
-        len_gp_cpnum_alns = init_lengp_cpnum_ideal_stats_table(len(ubs) + 1, cpnums_all, lbs, ubs)
-        len_gp_cpnum_tps = init_lengp_cpnum_ideal_stats_table(len(ubs) + 1, cpnums_all, lbs, ubs)
-        len_gp_cpnum_positives = init_lengp_cpnum_ideal_stats_table(len(ubs) + 1, cpnums_all, lbs, ubs)
-
+len_gp_est_component_counts = len_gp_stats['Largest copy # estimated'].tolist()
 for i in range(len(ubs)):
     lb, ub = lbs[i], ubs[i]
     if ub < np.inf:
@@ -301,8 +262,13 @@ for i in range(len(ubs)):
             compute_and_plot_population_densities(curr_components, seqs, MODE, 'with length in [' + str(lb) + ', ' + label_ub,
                 os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
         else:
-            est_max_cpnum = get_max_copynum(seqs.likeliest_copynum)
-            cpnums = get_copynums_list(est_max_cpnum)
+            if args.use_oom_len_gps:
+                lt_cdtn = (len_gp_stats['Min. len.'] < lbs[i]) & (len_gp_stats['Max. len.'] < lbs[i])
+                gt_cdtn = (len_gp_stats['Min. len.'] > ubs[i]) & (len_gp_stats['Max. len.'] > ubs[i])
+                est_max_cpnum = len_gp_stats.loc[~(lt_cdtn | gt_cdtn), 'Largest copy # estimated'].max()
+            else:
+                est_max_cpnum = len_gp_est_component_counts[i]
+            cpnums = get_copynums_list(int(est_max_cpnum))
             seqs_est, seqs_aln = get_seqs_attr_per_cpnum(seqs, 'likeliest_copynum', cpnums), get_seqs_attr_per_cpnum(seqs, 'alns', cpnums)
             est_counts, aln_counts = get_counts(seqs_est), get_counts(seqs_aln)
             depths = get_sorted_depth_vals(seqs.mean_kmer_depth.values)
@@ -315,33 +281,4 @@ for i in range(len(ubs)):
             else:
                 plot_aln_kdes_with_est_bds(kde_grid, cpnums, aln_kdes_normed, curr_components, depths, 'with length in [' + str(lb) + ', ' + label_ub,
                     os.path.join(args.plots_folder, args.plots_file_prefix + '_len-gte' + str(lb) + filename_ub))
-            if args.ideal_summary_folder:
-                cpnum_lbs = get_aln_copynum_bounds(aln_kdes_normed, kde_grid)
-                assigned_cpnums = cpnum_lbs[cpnum_lbs < np.inf].index
-                tps, positives = compute_ideal_tps(seqs_aln, cpnum_lbs), compute_ideal_positives(seqs, cpnum_lbs, assigned_cpnums)
-                for j in tps.index:
-                    len_gp_cpnum_lbs.loc[i, j] = cpnum_lbs[j]
-                    len_gp_cpnum_alns.loc[i, j], len_gp_cpnum_tps.loc[i, j], len_gp_cpnum_positives.loc[i, j] = aln_counts[j], tps[j], positives[j]
-                write_stats(compute_ideal_stats(len_gp_cpnum_tps.loc[i, cpnums], len_gp_cpnum_alns.loc[i, cpnums], len_gp_cpnum_positives.loc[i, cpnums]),
-                    os.path.join(ideal_summary_stats_folder, 'stats_len-gte' + str(lb) + filename_ub), tps.sum() / seqs.shape[0])
-
-if not(args.plot_est_population_densities) and args.ideal_summary_folder:
-    len_gp_cpnum_alns.loc[len(ubs), cpnums_all] = len_gp_cpnum_alns.loc[:(len(ubs)-1), cpnums_all].sum()
-    len_gp_cpnum_tps.loc[len(ubs), cpnums_all] = len_gp_cpnum_tps.loc[:(len(ubs)-1), cpnums_all].sum()
-    len_gp_cpnum_positives.loc[len(ubs), cpnums_all] = len_gp_cpnum_positives.loc[:(len(ubs)-1), cpnums_all].sum()
-    len_gp_cpnum_alns['total'] = len_gp_cpnum_alns[cpnums_all].sum(axis=1)
-    len_gp_cpnum_tps['total'] = len_gp_cpnum_tps[cpnums_all].sum(axis=1)
-    len_gp_cpnum_positives['total'] = len_gp_cpnum_positives[cpnums_all].sum(axis=1)
-    ideal_counts_path = os.path.join(ideal_counts_folder, 'est_len-gps')
-    if args.use_oom_len_gps:
-        ideal_counts_path = os.path.join(ideal_counts_folder, 'order-of-magnitude_len-gps')
-    if not(os.path.exists(ideal_counts_path)):
-        os.mkdir(ideal_counts_path)
-    write_counts(len_gp_cpnum_alns, len(ubs), cpnums_all, os.path.join(ideal_counts_path, 'copynum-aln_counts'))
-    write_counts(len_gp_cpnum_tps, len(ubs), cpnums_all, os.path.join(ideal_counts_path, 'copynum-tp_counts'))
-    write_counts(len_gp_cpnum_positives, len(ubs), cpnums_all, os.path.join(ideal_counts_path, 'copynum-positive_counts'))
-    len_gp_cpnum_lbs.to_csv(os.path.join(args.ideal_summary_folder, 'copynum-aln_lower-bounds' + (args.use_oom_len_gps * '_order-of-magnitude') + '.csv'), index_label = 'Len. gp.',
-        header = ['Min. len.', 'Max. len'] + list(map(lambda n: 'copy # ' + str(n), cpnums_all)))
-    write_stats(compute_ideal_stats(len_gp_cpnum_tps.loc[len(ubs), cpnums_all], len_gp_cpnum_alns.loc[len(ubs), cpnums_all], len_gp_cpnum_positives.loc[len(ubs), cpnums_all]),
-        os.path.join(ideal_summary_stats_folder, 'stats_agg' + args.use_oom_len_gps * '_order-of-magnitude'), len_gp_cpnum_tps.loc[len(ubs), cpnums_all].sum() / all_seqs.shape[0])
 
