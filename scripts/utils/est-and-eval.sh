@@ -2,11 +2,14 @@
 
 haploid=""
 half=""
+longest_seqs_peak_expected_cpnum=""
 use_length_strata=""
-use_oom_len_gps=""
-ideal=""
+lax_best_alnmt=""
+no_seq_identity_matching=""
+seq_identity_matching=""
+seq_identity_threshold=""
 
-while getopts "Hhoi" opt; do
+while getopts "Hhc:oleit:" opt; do
   case $opt in
     H)
       haploid="--haploid"
@@ -14,12 +17,23 @@ while getopts "Hhoi" opt; do
     h)
       half="--half"
       ;;
+    c)
+      longest_seqs_peak_expected_cpnum="$OPTARG"
+      ;;
     o)
       use_length_strata="--use_length_strata o"
-      use_oom_len_gps="--use_oom_len_gps"
+      ;;
+    l)
+      lax_best_alnmt="--lax_best_alnmt"
+      ;;
+    e)
+      no_seq_identity_matching="--no_seq_identity_matching"
       ;;
     i)
-      ideal="ideal"
+      seq_identity_matching="--seq_identity_matching"
+      ;;
+    t)
+      seq_identity_threshold="--seq_identity_threshold $OPTARG"
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -35,7 +49,7 @@ set -x
 
 # Run estimator
 mkdir -p results
-python ${WGS_COPYNUM_EST_HOME}/scripts/est.py $haploid $half abyss-out/${name}-2.fa $k results
+python ${WGS_COPYNUM_EST_HOME}/scripts/est.py $haploid $half abyss-out/${name}-2.fa $k results $longest_seqs_peak_expected_cpnum
 
 # Combine estimation and reference alignment data
 cd results
@@ -43,14 +57,14 @@ mkdir -p full
 mkdir -p summary
 mv sequence-labels.csv full/
 mv length_gp_stats.csv copynumber_params.csv summary/
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine-est-bwa-outputs.py $haploid $use_length_strata full/sequence-labels.csv ../aln/${name}_aln-counts.tsv summary/length_gp_stats.csv
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine_est_bwa_outputs.py $haploid $use_length_strata $lax_best_alnmt $no_seq_identity_matching $seq_identity_matching $seq_identity_threshold full/sequence-labels.csv ../aln/${name}_aln_parsed.tsv summary/length_gp_stats.csv
 
 mv seq-est-and-aln.csv full/
 mv aln-est* summary/
 
 # Compute summary stats
 cd summary
-${WGS_COPYNUM_EST_HOME}/scripts/utils/compute-stats-loop.sh
+${WGS_COPYNUM_EST_HOME}/scripts/utils/results/compute-stats-loop.sh
 
 mkdir -p aln-est_counts
 mv aln-est_counts*csv aln-est_counts/
@@ -58,24 +72,5 @@ mkdir -p counts
 mv counts_*csv counts/
 mkdir -p summary-stats
 mv summary-stats*csv summary-stats/
-
-# Create plots; compute ideal (best-possible) classifier performance summary statistics.
-cd ..
-mkdir -p plots
-mkdir -p plots/observed
-if [[ "${ideal}" == "ideal" ]]; then
-  mkdir -p ideal
-fi
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/component-densities_ideal-summary-stats.py $use_oom_len_gps full/seq-est-and-aln.csv summary/length_gp_stats.csv summary/copynumber_params.csv plots/observed component-densities $ideal
-if [ -z "$(ls -A plots/observed)" ]; then
-  rm -rf plots/
-  if [ -d ideal ]; then
-    rmdir ideal
-  fi
-else
-  mkdir -p summary/summary-stats/compare_ideal/
-  # Compute classifier-to-ideal performance summary statistics ratios
-  ${WGS_COPYNUM_EST_HOME}/scripts/utils/compare_est-ideal-stats_loop.sh
-fi
 
 set +x
