@@ -2,8 +2,10 @@
 
 haploid=""
 readfiles_prefix="diploid.fastq"
+mutation_rate="0.001"
+basequal_std="4"
 
-while getopts "e:E:L:C:H" opt; do
+while getopts "e:E:L:C:Q:r:H" opt; do
   case $opt in
     e)
       read1_error=$OPTARG
@@ -21,6 +23,12 @@ while getopts "e:E:L:C:H" opt; do
       haploid="-H"
       readfiles_prefix="haploid.fastq"
       ;;
+    Q)
+      basequal_std=$OPTARG
+      ;;
+    r)
+      mutation_rate=$OPTARG
+      ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
       ;;
@@ -33,7 +41,7 @@ refpath=$1
 set -x
 
 # Simulate mutations to reference, and reads
-dwgsim -e $read1_error -E $read2_error -C $perbase_read_cvg -1 $readlen -2 $readlen -n $readlen $haploid $refpath $readfiles_prefix
+dwgsim -e $read1_error -E $read2_error -r $mutation_rate -C $perbase_read_cvg -1 $readlen -2 $readlen -n $readlen -Q $basequal_std $haploid $refpath $readfiles_prefix
 
 mkdir -p reads
 mv *fastq reads/
