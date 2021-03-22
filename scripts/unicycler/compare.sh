@@ -18,13 +18,13 @@ mkdir -p unicycler-cpnum-results
 python ${WGS_COPYNUM_EST_HOME}/scripts/unicycler/get_multiplicities.py spades_contigs.fasta graph_multiplicities.txt unicycler-cpnum-results
 bwa mem -a -k $k -t $bwa_t $@ ../$refpath spades_contigs.fasta > contigs_aln.sam
 
-python ${WGS_COPYNUM_EST_HOME}/scripts/utils/sam-parse.py contigs_aln.sam contigs_aln-counts.tsv
+python ${WGS_COPYNUM_EST_HOME}/scripts/utils/sam_parse.py contigs_aln.sam contigs_aln_parsed.tsv
 
 mkdir -p est-cpnum-results
 ${WGS_COPYNUM_EST_HOME}/scripts/unicycler/aln-and-est.sh $k est-cpnum-results
 
 cd unicycler-cpnum-results
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine-est-bwa-outputs.py --collapse_highest_est_cpnums sequence-labels.csv ../contigs_aln-counts.tsv ../est-cpnum-results/length_gp_stats.csv
-${WGS_COPYNUM_EST_HOME}/scripts/utils/compute-stats-loop.sh
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine_est_bwa_outputs.py --collapse_highest_est_cpnums sequence-labels.csv ../contigs_aln_parsed.tsv ../est-cpnum-results/length_gp_stats.csv
+${WGS_COPYNUM_EST_HOME}/scripts/utils/results/compute-stats-loop.sh
 
 set +x
