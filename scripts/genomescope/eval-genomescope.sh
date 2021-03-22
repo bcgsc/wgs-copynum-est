@@ -16,12 +16,16 @@ fi
 
 set -x
 
-python ${WGS_COPYNUM_EST_HOME}/scripts/genomescope/cpnums-from-param-estimates.py $k $max k$k/abyss-out/$name-2.fa ${ntcard_prefix}_k${k}.hist $out_folder $gs_results_folder
+mkdir -p $out_folder/$gs_results_folder
+python ${WGS_COPYNUM_EST_HOME}/scripts/genomescope/cpnums_from_param_estimates.py $k $max k$k/abyss-out/$name-2.fa ${ntcard_prefix}_k${k}.hist $out_folder $gs_results_folder
 cd $out_folder/$gs_results_folder
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine-est-bwa-outputs.py --use_length_strata k sequence-labels.csv ../../../../../../k$k/aln/${name}_aln-counts.tsv
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/compute-summary-stats.py aln-est_counts.csv counts summary-stats
-cd ../$est_results_folder
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine-est-bwa-outputs.py --use_length_strata k ../../../../../../k$k/results/full/sequence-labels.csv ../../../../../../k$k/aln/${name}_aln-counts.tsv
-python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/compute-summary-stats.py aln-est_counts.csv counts summary-stats
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine_est_bwa_outputs.py --use_length_strata k sequence-labels.csv ../../../../../k$k/aln/${name}_aln_parsed.tsv ../../../../../k$k/results/summary/length_gp_stats.csv
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/compute_summary_stats.py aln-est_counts.csv counts summary-stats
+
+cd ..
+mkdir -p $est_results_folder
+cd $est_results_folder
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/combine_est_bwa_outputs.py --use_length_strata k ../../../../../k$k/results/full/sequence-labels.csv ../../../../../k$k/aln/${name}_aln_parsed.tsv ../../../../../k$k/results/summary/length_gp_stats.csv
+python ${WGS_COPYNUM_EST_HOME}/scripts/results/general/compute_summary_stats.py aln-est_counts.csv counts summary-stats
 
 set +x
