@@ -2,20 +2,6 @@
 
 set -x
 
-samparse_folder="utils"
-
-while getopts "r" opt; do
-  case $opt in
-    r)
-      samparse_folder="real-genomes"
-      ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      ;;
-  esac
-done
-
-shift $((OPTIND-1))
 k=$1; shift
 abyss_t=$1; shift
 reads1=$1; shift
