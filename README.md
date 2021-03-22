@@ -1,6 +1,4 @@
----------
-Example workflow (from copy-num-est root directory)
----------
+Example workflow (from project root directory)
 
 Note:
 a. <HOME> indicates project home, e.g. /projects/btl/yflim/copy-num-est
