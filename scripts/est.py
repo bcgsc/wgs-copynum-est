@@ -165,8 +165,9 @@ def get_component_weights(density_at_modes, min_density_depth_idx1, haploid, use
     if haploid or component_weights[0.5] > 0:
         min_cpnum = int(haploid) or 0.5
         copynum_pt5_sigma_est = component_weights[min_cpnum] / (m.sqrt(2 * m.pi) * density_at_modes[min_cpnum])
-        min_density1 = get_density_for_idx(val_to_grid_idx(depths[min_density_depth_idx1], kde_grid_density, grid_min), density)
-        if min_density1 < 1.25 * component_weights[min_cpnum] * stats.norm.pdf(depths[min_density_depth_idx1], min_cpnum * mode, copynum_pt5_sigma_est):
+        min_density1 = get_density_for_idx(min_density_depth_idx1, density)
+        min_density_depth1 = grid_idx_to_val(min_density_depth_idx1, kde_grid_density, grid_min)
+        if min_density1 < 1.25 * component_weights[min_cpnum] * stats.norm.pdf(min_density_depth1, min_cpnum * mode, copynum_pt5_sigma_est):
             density_at_modes[0] = 0
             component_weights = density_at_modes / density_at_modes.sum()
     return component_weights
@@ -441,7 +442,7 @@ def add_to_copynum_stats(data, cols, stats_hash):
     for i in range(len(data)):
         stats_hash[cols[i]].append(data[i])
 
-def create_copynum_stats(smallest_copynum, include_half, high_het, params, cpnum_prefixes, gaussian_prefixes, copynum_stats_hash):
+def create_copynum_stats(smallest_copynum, haploid, include_half, high_het, params, cpnum_prefixes, gaussian_prefixes, copynum_stats_hash):
     if 'exp_' == cpnum_prefixes.iloc[0]:
         add_to_copynum_stats(get_copynum_stats_data(0, params['exp_wt_c'].value, params['exp_decay'].value, params['exp_decay'].value),
             COPYNUM_STATS_COLS, copynum_stats_hash)
@@ -462,8 +463,11 @@ def create_copynum_stats(smallest_copynum, include_half, high_het, params, cpnum
         wt_normed, wt_i_normed = wt/wt1, wt_i/wt1
         mean1 = (wt_normed * mean) + (wt_i_normed * mean_i)
         sigma1 = m.sqrt((wt_normed * sigma**2) + (wt_i_normed * sigma_i**2) + (wt_normed * wt_i_normed * (mean - mean_i)**2))
-        round_idx = 1 - (not(has_copynum1) * 0.5)
-        add_to_copynum_stats(get_copynum_stats_data(0.5, wt1, mean1, sigma1, round_idx, round_idx), COPYNUM_STATS_COLS, copynum_stats_hash)
+        if haploid:
+            add_to_copynum_stats(get_copynum_stats_data(1, wt1, mean1, sigma1), COPYNUM_STATS_COLS, copynum_stats_hash)
+        else:
+            round_idx = 1 - (not(has_copynum1) * 0.5)
+            add_to_copynum_stats(get_copynum_stats_data(0.5, wt1, mean1, sigma1, round_idx, round_idx), COPYNUM_STATS_COLS, copynum_stats_hash)
     for i in cpnum_prefixes.index[cpnum_prefixes.index > 1]:
         wt, mean, sigma, loc, shape, scale = get_component_params(cpnum_prefixes[i], params)
         add_to_copynum_stats(get_copynum_stats_data(i, wt, mean, sigma, i, i, loc, shape, scale), COPYNUM_STATS_COLS, copynum_stats_hash)
@@ -486,6 +490,8 @@ argparser.add_argument('--per_unitig_mean_depth_given', action="store_true", hel
 argparser.add_argument('unitigs_file', type=str, help='FASTA file listing sequences to be classified')
 argparser.add_argument('kmer_len', type=int, help='Value of k used in assembly that output sequences to be classified')
 argparser.add_argument('output_dir', type=str, help='Directory to which output files should be written')
+longest_seqs_peak_expected_cpnum_help = 'Copy number expected to best correspond to location of peak empirical mean k-mer depth density of longest contigs'
+argparser.add_argument('longest_seqs_peak_expected_cpnum', type=float, nargs='?', help=longest_seqs_peak_expected_cpnum_help)
 args = argparser.parse_args()
 
 if args.haploid and args.half:
@@ -505,24 +511,26 @@ length_gps_for_est = utils.get_contig_length_gps(seqs, seqs.length)
 length_gps_count = len(length_gps_for_est)
 length_gp_medians = list(map(lambda gp: gp.length.median(), length_gps_for_est))
 
-haploid_or_trivial = (args.haploid or (seqs.shape[0] == 1))
-try_peak_as_half = not(haploid_or_trivial) # long sequences could have a heterozygous peak, although in that case the longest sequences should be shorter than in a low-heterozygosity genome
-no_peak_as_half = not(try_peak_as_half)
+if args.longest_seqs_peak_expected_cpnum:
+    longest_seqs_mode1_copynums = [args.longest_seqs_peak_expected_cpnum]
+else:
+    not_haploid = not(args.haploid)
+    longest_seqs_mode1_copynums = [0.5] * not_haploid + [1]
 
 LEN_GP_STATS_COLS = ['count', 'min_len', 'max_len', 'max_depth', 'max_depth_in_est', 'max_depth_pctl_rank_in_est', 'min_copynum', 'max_copynum_est']
-len_gp_stats = [None] * no_peak_as_half # somehow using not(try_peak_as_half) instead results in a syntax error
+len_gp_stats = [None] * (longest_seqs_mode1_copynums[0] == 1)
 COPYNUM_STATS_COLS = ['len_gp_id', 'len_gp_min_len', 'len_gp_max_len', 'copynum', 'depth_lb', 'depth_max', 'weight', 'depth_mean', 'depth_stdev', 'depth_loc', 'depth_shape', 'depth_scale']
-copynum_stats = [None] * no_peak_as_half
+copynum_stats = [None] * (longest_seqs_mode1_copynums[0] == 1)
 
 # Fit under assumption that first peak of density curve for longest sequences corresponds to mode of copy-number 0.5 or 1 (unique homozygous) sequences
 mode_error = 0.1
 aic = np.inf
-better_fit_model = 1
+better_fit_model = args.longest_seqs_peak_expected_cpnum
 
 log_file = open(args.output_dir + '/log.txt', 'w', newline='')
 
-for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
-    if try_peak_as_half:
+for longest_seqs_mode1_copynum in longest_seqs_mode1_copynums:
+    if len(longest_seqs_mode1_copynums) == 2:
         log_header = 'ESTIMATION ROUND ' + str(longest_seqs_mode1_copynum * 2) + ': ASSUME 1ST PEAK OF DENSITY CURVE FOR LONGEST SEQUENCES CORRESPONDS TO MODE OF COPY-NUMBER '
         log_header += str(longest_seqs_mode1_copynum) + ' SEQUENCES\n'
         log_file.write(log_header)
@@ -662,7 +670,7 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
             use_idx = use_idx or idx
             return [len_gp_idx, curr_len_gp_stats.min_len, curr_len_gp_stats.max_len, use_idx, copynum_lbs[idx], copynum_ubs[round_idx], wt, mean, sigma, loc, shape, scale]
 
-        create_copynum_stats(smallest_copynum, args.half, longest_seqs_mode1_copynum == 0.5, result.params, cpnum_prefixes, gaussian_prefixes, copynum_stats_hash)
+        create_copynum_stats(smallest_copynum, args.haploid, args.half, longest_seqs_mode1_copynum == 0.5, result.params, cpnum_prefixes, gaussian_prefixes, copynum_stats_hash)
         seqs.loc[seqs.likeliest_copynum > 1, 'likeliest_copynum'] = np.ceil(seqs.loc[seqs.likeliest_copynum > 1].likeliest_copynum)
     # End inner loop across sequence length groups
 
@@ -670,14 +678,14 @@ for longest_seqs_mode1_copynum in ([0.5] * int(try_peak_as_half) + [1.0]):
     if aic_current * 0.95 < aic: # Allow margin to try to avoid spurious decision
         aic = aic_current
         better_fit_model = longest_seqs_mode1_copynum
-    if try_peak_as_half and (aic_current < np.inf):
+    if (len(longest_seqs_mode1_copynums) == 2) and (aic_current < np.inf):
         log_file.write('Sum of per-length-group model AICs: ' + str(aic_current) + '\n\n')
     print('')
     seq_label_filename = args.output_dir + '/sequence-labels.csv'
     if better_fit_model == longest_seqs_mode1_copynum:
         seqs.loc[:, 'length':].to_csv(seq_label_filename, header=['Length', 'Average k-mer depth', '1st Mode X', 'GC %', 'Estimation length group', 'Likeliest copy #'], index_label='ID')
 
-if try_peak_as_half:
+if len(longest_seqs_mode1_copynums) == 2:
     log_footer = 'BETTER-FIT MODEL (LOWER SUM OF PER-LENGTH-GROUP MODEL AIC SCORES): 1ST PEAK OF DENSITY CURVE FOR LONGEST SEQUENCES CORRESPONDS TO MODE OF COPY-NUMBER '
     log_footer += str(better_fit_model) + ' SEQUENCES\n'
     log_file.write(log_footer)
