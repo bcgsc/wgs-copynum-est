@@ -7,7 +7,7 @@ import sys
 from scipy import stats
 
 if os.getenv('WGS_COPYNUM_EST_HOME'):
-  sys.path.insert(0, os.path.join(os.getenv('WGS_COPYNUM_EST_HOME'), 'scripts'))
+  sys.path.insert(0, os.path.join(os.getenv('WGS_COPYNUM_EST_HOME'), 'scripts/utils'))
 else:
   raise RuntimeError('Please set environment variable WGS_COPYNUM_EST_HOME before running script')
 
@@ -25,6 +25,7 @@ args = argparser.parse_args()
 
 ntcard_stats = pd.read_csv(args.ntcard_hist_file, sep='\t', header=None)
 hist = ntcard_stats.iloc[2:]
+print(hist.head())
 hist.rename(columns = { 0: 'cvg', 1: 'freq' }, inplace=True)
 hist['cvg'] = hist.cvg.astype(int)
 hist.set_index('cvg', inplace=True)
@@ -41,6 +42,13 @@ bias = float(model_file.readline().split()[1])
 length = float(model_file.readline().split()[1])
 n = mu / bias
 p = 1 / (1 + bias)
+# Decoding GenomeScope's parameterisation:
+# mu == kmercov (or a multiple thereof)
+# size, s == n
+# bias, b = (1-p)/p
+# mu = n(1-p)/p == nb
+# p = s/(s+mu)
+# sigma^2 = n(1-p)/p^2 == mu/p == mu + mu^2/s
 
 copynums = [0, 0.5, 1, 2, 3]
 cvg_frequencies = pd.DataFrame(0, index=copynums, columns=hist.index)
@@ -62,7 +70,7 @@ if args.max_cpnum_3:
   utils.impute_highest_cpnum_and_bds(cvg_frequencies, 3, copynum_assnmts, copynum_lbs, copynum_ubs,
       stats.nbinom.mean(3*n, p) + stats.nbinom.mean(4*n, p) + 2 * (stats.nbinom.var(3*n, p) + stats.nbinom.var(4*n, p)) ** 0.5 + wt2)
 
-seqs = utils.seqs_from_abyss_contigs(args.unitigs_file, args.kmer_len)
+seqs = utils.seqs_from_abyss_contigs(args.unitigs_file, compute_mean_depth=True, k=args.kmer_len)
 seqs.sort_values(by=['length', 'mean_kmer_depth'], inplace=True)
 seqs = seqs.loc[seqs.length == args.kmer_len]
 
