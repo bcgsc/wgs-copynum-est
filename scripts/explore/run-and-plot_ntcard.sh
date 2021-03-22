@@ -14,6 +14,6 @@ cd hist
 ntcard -t2 -k$(seq -s ',' $first $increment $last) -p $prefix ../$reads1 ../$reads2
 cd ..
 mkdir -p plots
-python ${WGS_COPYNUM_EST_HOME}/scripts/explore/plotting/plot_ntcard-output.py hist/ kmer-freq plots
+python ${WGS_COPYNUM_EST_HOME}/scripts/explore/plotting/plot_ntcard-output.py hist/ $prefix plots
 
 set +x
